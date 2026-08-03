@@ -91,6 +91,15 @@
         <h2>Chronicle</h2>
         <ol id="movelog" class="movelog"></ol>
       </div>
+
+      <div class="log-card chat-card hidden" id="chat-card">
+        <h2>Parlour</h2>
+        <div id="chatlog" class="chatlog"></div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" class="text-input" maxlength="300" placeholder="Speak…" autocomplete="off">
+          <button class="btn mini" type="submit">Send</button>
+        </form>
+      </div>
     </aside>
 
   </main>
@@ -110,6 +119,7 @@
       <div class="seg" id="seg-mode">
         <button data-v="hotseat" class="seg-btn active">Two Players</button>
         <button data-v="ai" class="seg-btn">Against the Court</button>
+        <button data-v="online" class="seg-btn">Online</button>
       </div>
     </div>
     <div class="field ai-only">
@@ -127,6 +137,26 @@
         <button data-v="spymaster" class="seg-btn">Spymaster</button>
       </div>
     </div>
+    <div class="field online-only">
+      <span class="field-label">Your part</span>
+      <div class="seg" id="seg-net-role">
+        <button data-v="host" class="seg-btn active">Create a Table</button>
+        <button data-v="join" class="seg-btn">Join by Code</button>
+      </div>
+    </div>
+    <div class="field online-only host-only">
+      <span class="field-label">You command</span>
+      <div class="seg" id="seg-host-side">
+        <button data-v="bone" class="seg-btn active">The Bone Court</button>
+        <button data-v="ash" class="seg-btn">The Ash Court</button>
+      </div>
+    </div>
+    <div class="field online-only join-only">
+      <span class="field-label">Room code</span>
+      <input id="join-code" class="text-input" maxlength="8" placeholder="e.g. K7QF"
+             autocomplete="off" autocapitalize="characters" spellcheck="false">
+    </div>
+    <p class="dialog-note online-only">Play travels directly between your two browsers; share the code by any messenger you like.</p>
     <div class="dialog-actions">
       <button class="btn ghost" id="btn-new-cancel">Cancel</button>
       <button class="btn primary" id="btn-new-start">Begin</button>
@@ -221,13 +251,29 @@
     <p id="over-text"></p>
     <div class="dialog-actions">
       <button class="btn ghost" id="btn-over-board">View the Board</button>
+      <button class="btn hidden" id="btn-over-rematch">Offer Rematch</button>
       <button class="btn primary" id="btn-over-new">New Game</button>
+    </div>
+  </div>
+</div>
+
+<!-- Online: awaiting connection -->
+<div class="overlay hidden" id="ov-wait">
+  <div class="dialog netwait">
+    <h2 id="wait-title">The Table Is Set</h2>
+    <p id="wait-text">Share this code with the other court:</p>
+    <div class="room-code" id="wait-code"></div>
+    <div id="wait-status"></div>
+    <div class="dialog-actions">
+      <button class="btn" id="btn-copy-invite">Copy Invitation</button>
+      <button class="btn ghost" id="btn-wait-cancel">Cancel</button>
     </div>
   </div>
 </div>
 <button class="btn result-chip hidden" id="btn-show-result">Show Result</button>
 <button class="focus-btn" id="btn-focus" title="Full-screen view" aria-label="Toggle full-screen view">⛶</button>
 
+<script src="js/vendor/peerjs.min.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
