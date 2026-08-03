@@ -13,6 +13,7 @@ The full rulebook is in [`Kronspiel_Rules.md`](Kronspiel_Rules.md).
 ## Features
 
 - **Hotseat** two-player mode and a **single-player mode** against three levels of AI (Novice / Courtier / Spymaster — iterative-deepening alpha-beta search whose evaluation is built around escape squares, not just material)
+- **Online play** — host a table and share a four-letter room code (or an invitation link); moves travel peer-to-peer over WebRTC (PeerJS, with its free public signaling server brokering the handshake — no game server, no accounts). Includes in-game text chat, parley/resign/draw-claim negotiation, rematch with sides swapped, and reconnection by rejoining with the same code
 - Full rules enforcement: the Aschenstuhl, Die Flucht, Isolation with its no-rescue and no-self-isolation clauses, Bürger promotion (only ever to Gesandter), and every draw form — the Long Siege, the Long Winter, the Empty Court, Mutual Ruin, and Parley
 - Escape-square overlay and live escape counters, isolation post-mortem highlighting, move chronicle, undo, board flip, and automatic game saving in the browser
 

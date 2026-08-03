@@ -8,6 +8,7 @@ import {
 } from './engine.js';
 import { findBestMove, quickEval } from './ai.js';
 import { PIECE_SETS, pieceHTML } from './pieces.js';
+import { Net, makeCode, normalizeCode } from './net.js';
 
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'kronspiel-save-v1';
@@ -30,9 +31,15 @@ let lastMove = null;    // {from, to}
 let aiThinking = false;
 let parleyPending = false;
 
+// Online play
+let net = null;          // Net instance while an online session is live
+let oppHere = false;     // the other court is connected
+let hostRetries = 0;     // room-code collision retries
+
 const cur = () => hist[hist.length - 1];
 const sideName = (s) => (s === BONE ? 'The Bone Court' : 'The Ash Court');
 const isAiTurn = () => settings.mode === 'ai' && !result && cur().turn === -settings.humanSide;
+const isOnline = () => settings.mode === 'online';
 
 // ---------------------------------------------------------------------------
 // Board DOM
@@ -208,6 +215,8 @@ function paintBars() {
     let label = sideName(side);
     if (settings.mode === 'ai') {
       label += side === settings.humanSide ? ' · You' : ' · The Court';
+    } else if (isOnline()) {
+      label += side === settings.humanSide ? ' · You' : ' · The Other Court';
     }
     name.textContent = label;
     sig.className = 'court-sigil ' + (side === BONE ? 'bone' : 'ash');
@@ -242,6 +251,15 @@ function paintStatus() {
     sub.textContent = '';
     return;
   }
+  if (isOnline() && !oppHere) {
+    const t = net && net.role === 'host' ? 'Awaiting the other court.' : 'The line is severed.';
+    st.textContent = t;
+    fs.textContent = t;
+    sub.textContent = net && net.role === 'host'
+      ? 'Share the room code to fill the empty seat.'
+      : 'Rejoin from New Game → Online with the same code.';
+    return;
+  }
   st.textContent = `${sideName(state.turn)} to move.`;
   fs.textContent = st.textContent;
   const info = isolationInfo(state.board, state.turn, state.flucht[state.turn], true);
@@ -258,12 +276,12 @@ function paintStatus() {
 
 function paintControls() {
   const interactive = !result && !aiThinking;
-  $('btn-undo').disabled = hist.length < 2 || aiThinking;
+  $('btn-undo').disabled = hist.length < 2 || aiThinking || isOnline();
   $('btn-focus-undo').disabled = $('btn-undo').disabled;
-  $('btn-parley').disabled = !interactive;
-  $('btn-resign').disabled = !interactive;
+  $('btn-parley').disabled = !interactive || (isOnline() && !oppHere);
+  $('btn-resign').disabled = !interactive || (isOnline() && !oppHere);
   const claims = !result && !aiThinking ? claimableDraws(cur()) : { longSiege: false, longWinter: false };
-  const humanCanClaim = settings.mode === 'hotseat' || cur().turn === settings.humanSide;
+  const humanCanClaim = settings.mode === 'hotseat' || isOnline() || cur().turn === settings.humanSide;
   $('btn-siege').classList.toggle('hidden', !(claims.longSiege && humanCanClaim));
   $('btn-winter').classList.toggle('hidden', !(claims.longWinter && humanCanClaim));
   $('claims').classList.toggle('hidden',
@@ -305,6 +323,7 @@ function onBoardClick(e) {
   const sqEl = e.target.closest('.sq');
   if (!sqEl || result || aiThinking) return;
   if (settings.mode === 'ai' && cur().turn !== settings.humanSide) return;
+  if (isOnline() && (!oppHere || !net?.connected || cur().turn !== settings.humanSide)) return;
   const sq = +sqEl.dataset.sq;
   const state = cur();
 
@@ -329,8 +348,11 @@ function onBoardClick(e) {
 // Game flow
 // ---------------------------------------------------------------------------
 
-function playMove(m) {
+function playMove(m, fromRemote = false) {
   const before = cur();
+  if (isOnline() && !fromRemote) {
+    net?.send({ t: 'move', m: { from: m.from, to: m.to }, ply: before.ply });
+  }
   const capturedVal = before.board[m.to];
   const entry = {
     ply: before.ply,
@@ -422,6 +444,9 @@ function setResult(end) {
 function showGameOver() {
   $('over-title').textContent = result.title;
   $('over-text').textContent = result.text;
+  const rematch = $('btn-over-rematch');
+  rematch.classList.toggle('hidden', !isOnline() || !net?.connected);
+  rematch.disabled = false;
   $('ov-over').classList.remove('hidden');
   $('btn-show-result').classList.add('hidden');
 }
@@ -469,7 +494,7 @@ function newGame(fresh) {
 }
 
 function undo() {
-  if (hist.length < 2 || aiThinking) return;
+  if (hist.length < 2 || aiThinking || isOnline()) return;
   const pops = settings.mode === 'ai'
     ? (cur().turn === settings.humanSide && hist.length >= 3 ? 2 : 1)
     : 1;
@@ -502,6 +527,13 @@ function rebuildCaptured() {
 
 function offerParley() {
   if (result || aiThinking) return;
+  if (isOnline()) {
+    if (!net?.connected) return;
+    net.send({ t: 'parley-offer' });
+    $('substatus').textContent = 'A parley is offered to the other court.';
+    addChat('sys', 'You offer a parley.');
+    return;
+  }
   if (settings.mode === 'ai') {
     const aiSide = -settings.humanSide;
     // The Court accepts if it judges itself clearly worse.
@@ -525,8 +557,9 @@ function offerParley() {
 
 function resign() {
   if (result || aiThinking) return;
-  const loser = settings.mode === 'ai' ? settings.humanSide : cur().turn;
+  const loser = settings.mode === 'hotseat' ? cur().turn : settings.humanSide;
   confirmDialog('Resign the Board', `${sideName(loser)} yields the game. Are you certain?`, () => {
+    if (isOnline()) net?.send({ t: 'resign' });
     setResult({ type: 'resign', loser });
     paint(); save();
   });
@@ -537,6 +570,7 @@ function resign() {
 // ---------------------------------------------------------------------------
 
 function save() {
+  if (isOnline()) return; // online sessions live and die with the connection
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       settings: { ...settings },
@@ -568,6 +602,7 @@ function load() {
     const o = JSON.parse(raw);
     if (!o.hist || !o.hist.length) return false;
     settings = o.settings;
+    if (settings.mode === 'online') settings.mode = 'hotseat'; // never restore a dead connection
     hist = o.hist.map(deserialize);
     logEntries = o.logEntries || [];
     capturedBy = { [BONE]: o.capturedBy?.[BONE] || [], [ASH]: o.capturedBy?.[ASH] || [] };
@@ -584,6 +619,257 @@ function load() {
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Online play
+// ---------------------------------------------------------------------------
+
+function showChat(on) {
+  $('chat-card').classList.toggle('hidden', !on);
+}
+
+function clearChat() {
+  $('chatlog').innerHTML = '';
+}
+
+function addChat(kind, text) {
+  if ($('chat-card').classList.contains('hidden')) return;
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + kind;
+  if (kind === 'sys') {
+    div.textContent = text;
+  } else {
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = kind === 'you' ? 'You' : 'They';
+    const body = document.createElement('span');
+    body.textContent = text;
+    div.append(who, body);
+  }
+  const log = $('chatlog');
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function showWait(role, code) {
+  $('wait-title').textContent = role === 'host' ? 'The Table Is Set' : 'Seeking the Table';
+  $('wait-text').textContent = role === 'host'
+    ? (code ? 'Share this code with the other court:' : 'Reaching the courier network…')
+    : 'Knocking with code:';
+  $('wait-code').textContent = code || '';
+  $('wait-status').textContent = '';
+  $('btn-copy-invite').classList.toggle('hidden', role !== 'host' || !code);
+  $('ov-wait').classList.remove('hidden');
+}
+
+function leaveOnline() {
+  if (net) { net.destroy(); net = null; }
+  oppHere = false;
+  hostRetries = 0;
+  showChat(false);
+  $('ov-wait').classList.add('hidden');
+  if (settings.mode === 'online') settings = { ...settings, mode: 'hotseat' };
+}
+
+function netStart(role, code) {
+  net = new Net({
+    onHostReady: (c) => showWait('host', c),
+    onConnect: onPeerConnected,
+    onMessage: onNetMessage,
+    onClose: onPeerClosed,
+    onError: onNetError,
+  });
+  if (role === 'host') {
+    net.host(code);
+    showWait('host', null); // the code appears once the network answers
+  } else {
+    net.join(code);
+    showWait('join', code);
+  }
+}
+
+function startHost(side) {
+  leaveOnline();
+  settings = { mode: 'online', humanSide: side, level: 'courtier' };
+  hist = [initialState()];
+  logEntries = [];
+  capturedBy = { [BONE]: [], [ASH]: [] };
+  result = null;
+  lastMove = null;
+  selection = null;
+  aiThinking = false;
+  flipped = side === ASH;
+  $('ov-over').classList.add('hidden');
+  $('btn-show-result').classList.add('hidden');
+  showChat(true);
+  clearChat();
+  layoutBoard();
+  legalCache = genLegal(cur());
+  paint();
+  paintLog();
+  netStart('host', makeCode());
+}
+
+function startJoin(code) {
+  leaveOnline();
+  netStart('join', code);
+}
+
+function onPeerConnected() {
+  oppHere = true;
+  hostRetries = 0;
+  if (net.role === 'host') {
+    $('ov-wait').classList.add('hidden');
+    net.send({
+      t: 'welcome',
+      state: serialize(cur()),
+      side: -settings.humanSide,
+      log: logEntries,
+      capBone: capturedBy[BONE],
+      capAsh: capturedBy[ASH],
+    });
+    addChat('sys', 'The other court has arrived. The game is afoot.');
+    paint();
+  }
+  // The guest waits for the host's welcome before taking a seat.
+}
+
+function onNetMessage(msg) {
+  switch (msg.t) {
+    case 'welcome': {
+      if (net?.role !== 'guest') break;
+      settings = { mode: 'online', humanSide: msg.side, level: 'courtier' };
+      hist = [deserialize(msg.state)];
+      logEntries = Array.isArray(msg.log) ? msg.log : [];
+      capturedBy = { [BONE]: msg.capBone || [], [ASH]: msg.capAsh || [] };
+      result = null;
+      lastMove = null;
+      selection = null;
+      aiThinking = false;
+      flipped = settings.humanSide === ASH;
+      $('ov-wait').classList.add('hidden');
+      $('ov-over').classList.add('hidden');
+      $('btn-show-result').classList.add('hidden');
+      showChat(true);
+      clearChat();
+      addChat('sys', `You are seated. You command ${sideName(settings.humanSide)}.`);
+      layoutBoard();
+      afterPositionChange();
+      break;
+    }
+    case 'move':
+      handleRemoteMove(msg);
+      break;
+    case 'chat':
+      addChat('them', String(msg.text || '').slice(0, 300));
+      break;
+    case 'parley-offer':
+      if (result) break;
+      confirmDialog('A Parley Is Offered', 'The other court offers a draw. Do you accept?', () => {
+        net?.send({ t: 'parley-accept' });
+        setResult({ type: 'parley' });
+        paint();
+      }, () => {
+        net?.send({ t: 'parley-decline' });
+      });
+      break;
+    case 'parley-accept':
+      if (!result) { setResult({ type: 'parley' }); paint(); }
+      break;
+    case 'parley-decline':
+      $('substatus').textContent = 'The other court declines your parley.';
+      addChat('sys', 'The other court declines your parley.');
+      break;
+    case 'resign':
+      if (!result) { setResult({ type: 'resign', loser: -settings.humanSide }); paint(); }
+      break;
+    case 'claim': {
+      if (result) break;
+      const claims = claimableDraws(cur());
+      if (msg.kind === 'siege' && claims.longSiege) { setResult({ type: 'siege' }); paint(); }
+      if (msg.kind === 'winter' && claims.longWinter) { setResult({ type: 'winter' }); paint(); }
+      break;
+    }
+    case 'rematch-offer':
+      confirmDialog('A Rematch Is Offered', 'The other court proposes a fresh board, sides exchanged. Accept?', () => {
+        net?.send({ t: 'rematch-accept' });
+        doRematch();
+      }, () => {
+        net?.send({ t: 'rematch-decline' });
+      });
+      break;
+    case 'rematch-accept':
+      doRematch();
+      break;
+    case 'rematch-decline':
+      addChat('sys', 'The other court declines a rematch.');
+      $('btn-over-rematch').disabled = false;
+      break;
+  }
+}
+
+function handleRemoteMove(msg) {
+  if (result || !msg.m) return;
+  const state = cur();
+  // Only the opponent's moves, only on their turn, only if legal here too.
+  if (state.turn === settings.humanSide || state.ply !== msg.ply) return desync();
+  const mv = legalCache.find((x) => x.from === msg.m.from && x.to === msg.m.to);
+  if (!mv) return desync();
+  selection = null;
+  playMove(mv, true);
+}
+
+function desync() {
+  addChat('sys', 'The two boards have fallen out of step. Start a fresh game together.');
+}
+
+function onPeerClosed() {
+  if (!net) return;
+  oppHere = false;
+  if (!result) {
+    addChat('sys', 'The other court has left the table.');
+    if (net.role === 'host') {
+      showWait('host', net.code);
+      $('wait-status').textContent = 'The seat is empty — the same code lets them return.';
+    }
+  }
+  paint();
+}
+
+function onNetError(kind) {
+  if (kind === 'unavailable-id' && net?.role === 'host' && hostRetries < 3) {
+    hostRetries++;
+    const old = net; net = null; old.destroy();
+    netStart('host', makeCode());
+    return;
+  }
+  const text = kind === 'peer-unavailable'
+    ? 'No table answers to that code.'
+    : 'The courier network cannot be reached. Try again shortly.';
+  if (!$('ov-wait').classList.contains('hidden')) {
+    $('wait-status').textContent = text;
+  } else {
+    addChat('sys', text);
+  }
+}
+
+function doRematch() {
+  settings = { ...settings, humanSide: -settings.humanSide };
+  hist = [initialState()];
+  logEntries = [];
+  capturedBy = { [BONE]: [], [ASH]: [] };
+  result = null;
+  lastMove = null;
+  selection = null;
+  flipped = settings.humanSide === ASH;
+  $('ov-over').classList.add('hidden');
+  $('btn-show-result').classList.add('hidden');
+  addChat('sys', `A fresh board. You now command ${sideName(settings.humanSide)}.`);
+  layoutBoard();
+  legalCache = genLegal(cur());
+  paint();
+  paintLog();
 }
 
 // ---------------------------------------------------------------------------
@@ -623,11 +909,13 @@ function setFocus(on) {
 }
 
 let confirmYes = null;
+let confirmNo = null;
 
-function confirmDialog(title, text, onYes) {
+function confirmDialog(title, text, onYes, onNo = null) {
   $('confirm-title').textContent = title;
   $('confirm-text').textContent = text;
   confirmYes = onYes;
+  confirmNo = onNo;
   $('ov-confirm').classList.remove('hidden');
 }
 
@@ -650,8 +938,22 @@ function wireUi() {
   $('btn-new').addEventListener('click', () => $('ov-new').classList.remove('hidden'));
   $('btn-new-cancel').addEventListener('click', () => $('ov-new').classList.add('hidden'));
   $('btn-new-start').addEventListener('click', () => {
+    const mode = segValue('seg-mode');
+    if (mode === 'online') {
+      if (segValue('seg-net-role') === 'join') {
+        const code = normalizeCode($('join-code').value);
+        if (!code) { $('join-code').focus(); return; }
+        $('ov-new').classList.add('hidden');
+        startJoin(code);
+      } else {
+        $('ov-new').classList.add('hidden');
+        startHost(segValue('seg-host-side') === 'bone' ? BONE : ASH);
+      }
+      return;
+    }
+    leaveOnline();
     settings = {
-      mode: segValue('seg-mode'),
+      mode,
       humanSide: segValue('seg-side') === 'bone' ? BONE : ASH,
       level: segValue('seg-level'),
     };
@@ -662,11 +964,49 @@ function wireUi() {
     layoutBoard();
   });
   wireSeg('seg-mode', (v) => {
-    $('ov-new').querySelector('.dialog').classList.toggle('hide-ai', v !== 'ai');
+    const dlg = $('ov-new').querySelector('.dialog');
+    dlg.classList.toggle('hide-ai', v !== 'ai');
+    dlg.classList.toggle('mode-online', v === 'online');
   });
   wireSeg('seg-side');
   wireSeg('seg-level');
+  wireSeg('seg-net-role', (v) => {
+    $('ov-new').querySelector('.dialog').classList.toggle('role-join', v === 'join');
+  });
+  wireSeg('seg-host-side');
   $('ov-new').querySelector('.dialog').classList.add('hide-ai');
+
+  // Online: waiting overlay, chat, rematch
+  $('btn-wait-cancel').addEventListener('click', () => {
+    leaveOnline();
+    paint();
+  });
+  $('btn-copy-invite').addEventListener('click', async () => {
+    const code = net?.code || '';
+    if (!code) return;
+    const url = `${location.origin}${location.pathname}?join=${code}`;
+    const text = `Kronspiel — join my table with code ${code}: ${url}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      $('wait-status').textContent = 'Invitation copied — paste it to the other court.';
+    } catch {
+      $('wait-status').textContent = 'Copying failed — share the code above by hand.';
+    }
+  });
+  $('chat-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = $('chat-input').value.trim().slice(0, 300);
+    if (!text || !net?.connected) return;
+    net.send({ t: 'chat', text });
+    addChat('you', text);
+    $('chat-input').value = '';
+  });
+  $('btn-over-rematch').addEventListener('click', () => {
+    if (!net?.connected) return;
+    net.send({ t: 'rematch-offer' });
+    $('btn-over-rematch').disabled = true;
+    addChat('sys', 'You offer a rematch.');
+  });
 
   $('btn-rules').addEventListener('click', () => $('ov-rules').classList.remove('hidden'));
   $('btn-rules-close').addEventListener('click', () => $('ov-rules').classList.add('hidden'));
@@ -686,10 +1026,14 @@ function wireUi() {
     applyPieceSet();
   });
 
-  $('btn-confirm-no').addEventListener('click', () => { confirmYes = null; $('ov-confirm').classList.add('hidden'); });
+  $('btn-confirm-no').addEventListener('click', () => {
+    $('ov-confirm').classList.add('hidden');
+    const fn = confirmNo; confirmYes = null; confirmNo = null;
+    if (fn) fn();
+  });
   $('btn-confirm-yes').addEventListener('click', () => {
     $('ov-confirm').classList.add('hidden');
-    const fn = confirmYes; confirmYes = null;
+    const fn = confirmYes; confirmYes = null; confirmNo = null;
     if (fn) fn();
   });
 
@@ -709,8 +1053,14 @@ function wireUi() {
   $('btn-resign').addEventListener('click', resign);
   $('chk-escapes').addEventListener('change', paint);
 
-  $('btn-siege').addEventListener('click', () => { setResult({ type: 'siege' }); paint(); save(); });
-  $('btn-winter').addEventListener('click', () => { setResult({ type: 'winter' }); paint(); save(); });
+  $('btn-siege').addEventListener('click', () => {
+    if (isOnline()) net?.send({ t: 'claim', kind: 'siege' });
+    setResult({ type: 'siege' }); paint(); save();
+  });
+  $('btn-winter').addEventListener('click', () => {
+    if (isOnline()) net?.send({ t: 'claim', kind: 'winter' });
+    setResult({ type: 'winter' }); paint(); save();
+  });
 
   // Full-screen focus mode
   $('btn-focus').addEventListener('click', () => setFocus(!document.body.classList.contains('focus')));
@@ -744,4 +1094,11 @@ paintRuleIcons();
 newGame(false);
 if (result) {
   $('btn-show-result').classList.remove('hidden');
+}
+
+// An invitation link (?join=CODE) goes straight to the table.
+const joinParam = new URLSearchParams(location.search).get('join');
+if (joinParam && normalizeCode(joinParam)) {
+  history.replaceState(null, '', location.pathname);
+  startJoin(normalizeCode(joinParam));
 }

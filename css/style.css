@@ -550,6 +550,9 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 
 .overlay.hidden, .hidden { display: none !important; }
 
+/* questions outrank announcements: a confirm may arrive over the game-over dialog */
+#ov-confirm { z-index: 55; }
+
 .dialog {
   background: linear-gradient(180deg, #201a13 0%, #171310 100%);
   border: 1px solid #453a28;
@@ -630,6 +633,95 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 .rules-body h3:first-child { margin-top: 0; }
 .rules-body ul, .rules-body ol { padding-left: 22px; margin: 6px 0; }
 .rules-body li { margin: 3px 0; }
+
+/* ---------- online play ---------- */
+
+.text-input {
+  width: 100%;
+  font-family: "EB Garamond", serif;
+  font-size: 16px;
+  color: var(--ink);
+  background: #16120d;
+  border: 1px solid #2e2820;
+  border-radius: 3px;
+  padding: 9px 12px;
+}
+.text-input:focus { outline: none; border-color: var(--gold); }
+.text-input::placeholder { color: #6e6350; font-style: italic; }
+
+#join-code {
+  font-family: "Cinzel", serif;
+  font-size: 20px;
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.dialog .online-only { display: none; }
+.dialog.mode-online .online-only { display: block; }
+.dialog.mode-online.role-join .host-only { display: none; }
+.dialog.mode-online:not(.role-join) .join-only { display: none; }
+
+.dialog-note {
+  font-size: 14px;
+  font-style: italic;
+  color: var(--ink-dim);
+  margin: 0 0 4px;
+}
+
+.netwait { text-align: center; max-width: 400px; }
+.netwait .dialog-actions { justify-content: center; }
+#wait-text { color: var(--ink-dim); font-style: italic; margin: 0; }
+
+.room-code {
+  font-family: "Cinzel", serif;
+  font-size: 34px;
+  letter-spacing: 0.35em;
+  text-align: center;
+  color: var(--gold-bright);
+  border: 1px dashed #6a5a2f;
+  border-radius: 4px;
+  padding: 14px 8px 14px 20px;
+  margin: 12px 0 6px;
+  text-shadow: 0 0 18px rgba(200, 162, 74, 0.35);
+  user-select: all;
+}
+.room-code:empty { display: none; }
+
+#wait-status {
+  min-height: 20px;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--ink-dim);
+}
+
+.chatlog {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  min-height: 70px;
+  overflow-y: auto;
+  font-size: 15px;
+  margin-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #3a3226 transparent;
+}
+
+.chat-msg { line-height: 1.35; overflow-wrap: anywhere; }
+.chat-msg .who {
+  font-family: "Cinzel", serif;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-right: 6px;
+}
+.chat-msg.you .who { color: var(--gold-bright); }
+.chat-msg.them .who { color: var(--ink-dim); }
+.chat-msg.sys { color: var(--ink-dim); font-style: italic; font-size: 14px; }
+
+.chat-form { display: flex; gap: 6px; }
+.chat-form .text-input { flex: 1; padding: 7px 10px; font-size: 15px; }
 
 /* game over */
 .dialog.gameover { text-align: center; max-width: 430px; }
