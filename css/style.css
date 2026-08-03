@@ -875,6 +875,48 @@ body.focus .claims {
 
 body.focus .focus-btn { display: flex; }
 
+/* ---------- chat in focus mode ---------- */
+
+/* ID selectors so the generic .focus-btn rules (including the mobile media
+   query) never show the chat button outside an online game in focus mode. */
+#btn-focus-chat { display: none; left: 14px; right: auto; }
+body.focus #btn-focus-chat:not(.unavailable) { display: flex; }
+
+.chat-unread {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 4px;
+  border-radius: 10px;
+  background: var(--ember);
+  color: #f3ecdc;
+  font-family: "Cinzel", serif;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 19px;
+  text-align: center;
+}
+
+/* The Parlour floats over the board while the chat toggle is open */
+body.focus.chat-open .sidebar {
+  display: block;
+  position: fixed;
+  left: 10px;
+  bottom: 74px;
+  top: auto;
+  width: min(340px, calc(100vw - 20px));
+  z-index: 48;
+}
+body.focus.chat-open .sidebar > :not(#chat-card) { display: none; }
+body.focus.chat-open #chat-card {
+  margin: 0;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.65);
+  border-color: #4a3f2c;
+}
+body.focus.chat-open #chat-card .chatlog { max-height: 38dvh; }
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 900px) {

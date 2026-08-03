@@ -868,8 +868,32 @@ async function copyRecord() {
 // Online play
 // ---------------------------------------------------------------------------
 
+let chatUnread = 0;
+
 function showChat(on) {
   $('chat-card').classList.toggle('hidden', !on);
+  $('btn-focus-chat').classList.toggle('unavailable', !on);
+  if (!on) {
+    document.body.classList.remove('chat-open');
+    chatUnread = 0;
+    paintChatUnread();
+  }
+}
+
+function paintChatUnread() {
+  const el = $('chat-unread');
+  el.classList.toggle('hidden', chatUnread === 0);
+  el.textContent = chatUnread > 9 ? '9+' : String(chatUnread);
+}
+
+function toggleFocusChat() {
+  const open = document.body.classList.toggle('chat-open');
+  if (open) {
+    chatUnread = 0;
+    paintChatUnread();
+    const log = $('chatlog');
+    log.scrollTop = log.scrollHeight;
+  }
 }
 
 function clearChat() {
@@ -878,6 +902,13 @@ function clearChat() {
 
 function addChat(kind, text) {
   if ($('chat-card').classList.contains('hidden')) return;
+  // In focus mode the Parlour is tucked away — count what arrives unseen.
+  if (kind === 'them'
+      && document.body.classList.contains('focus')
+      && !document.body.classList.contains('chat-open')) {
+    chatUnread++;
+    paintChatUnread();
+  }
   const div = document.createElement('div');
   div.className = 'chat-msg ' + kind;
   if (kind === 'sys') {
@@ -1152,6 +1183,7 @@ function paintPieceSetPreview() {
 
 function setFocus(on) {
   document.body.classList.toggle('focus', on);
+  if (!on) document.body.classList.remove('chat-open');
   if (on) {
     // Native fullscreen where the platform allows it (not iOS Safari);
     // the CSS focus layout stands on its own either way.
@@ -1329,9 +1361,13 @@ function wireUi() {
   $('btn-focus').addEventListener('click', () => setFocus(!document.body.classList.contains('focus')));
   $('btn-focus-exit').addEventListener('click', () => setFocus(false));
   $('btn-focus-undo').addEventListener('click', undo);
+  $('btn-focus-chat').addEventListener('click', toggleFocusChat);
   document.addEventListener('fullscreenchange', () => {
     // leaving native fullscreen (back gesture, Esc) also leaves focus mode
-    if (!document.fullscreenElement) document.body.classList.remove('focus');
+    if (!document.fullscreenElement) {
+      document.body.classList.remove('focus');
+      document.body.classList.remove('chat-open');
+    }
   });
 
   // click outside a dialog closes the passive ones
