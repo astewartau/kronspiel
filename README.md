@@ -6,7 +6,7 @@ A web implementation of **Kronspiel** ("Crown-play") — an 11×11 court-game in
 
 ## The game in one paragraph
 
-Chess-familiar pieces on an 11×11 board whose centre square — the **Aschenstuhl**, the Ash Seat — belongs to no one: nothing may occupy it, and sliding pieces cannot see past it. There is no check, no checkmate, and no stalemate-as-draw. At the start of every turn the moving player's **Krone** is examined: if every square adjacent to him (plus any square still reachable by his once-per-game **Flucht** leap) is occupied, threatened, or off the board — *and* at least one of those squares is an enemy's doing — he is Isolated and the game is instantly over. His own court counts toward the wall. There is no rescue.
+Chess-familiar pieces on an 11×11 board whose centre square — the **Aschenstuhl**, the Ash Seat — belongs to no one: nothing may occupy it, and sliding pieces cannot see past it. There is no check, no checkmate, and no stalemate-as-draw. At the start of every turn the moving player's **Krone** is examined: if every square adjacent to him (plus any square still reachable by his once-per-game **Flucht** leap) is occupied, threatened, or off the board — *and* the enemy either threatens the Krone's own square or a genuinely empty square beside him — he is Isolated and the game is instantly over. His own court counts toward the wall, but threats against squares his own court already fills count for nothing. The Krone can never be captured, and there is no rescue.
 
 The full rulebook is in [`Kronspiel_Rules.md`](Kronspiel_Rules.md).
 

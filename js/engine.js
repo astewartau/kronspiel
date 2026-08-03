@@ -127,9 +127,11 @@ export function genPseudo(board, side, fluchtAvail) {
         if (f1 !== ASCH && board[f1] === EMPTY) {
           moves.push({ from, to: f1, promo: fr === lastRank });
           if (r === startRow) {
-            const f2 = idx(fr + side, c);
-            if (f2 !== ASCH && board[f2] === EMPTY) {
-              moves.push({ from, to: f2, double: true });
+            // First move only: advance two or three squares in a straight line.
+            for (let d = 2; d <= 3; d++) {
+              const fd = idx(r + side * d, c);
+              if (fd === ASCH || board[fd] !== EMPTY) break;
+              moves.push({ from, to: fd, dash: d });
             }
           }
         }
@@ -138,8 +140,12 @@ export function genPseudo(board, side, fluchtAvail) {
           if (cc < 0 || cc >= N) continue;
           const t = idx(fr, cc);
           const q = board[t];
-          if (q !== EMPTY && Math.sign(q) === -side) {
+          if (q !== EMPTY && Math.sign(q) === -side && Math.abs(q) !== KRONE) {
             moves.push({ from, to: t, promo: fr === lastRank });
+          } else if (f1 === ASCH && q === EMPTY) {
+            // §2: a Bürger whose file runs into the Aschenstuhl (f5/f7) may
+            // step diagonally around it — the game's one non-capturing diagonal.
+            moves.push({ from, to: t });
           }
         }
       }
@@ -150,7 +156,7 @@ export function genPseudo(board, side, fluchtAvail) {
         const t = idx(rr, cc);
         if (t === ASCH) continue;
         const q = board[t];
-        if (q === EMPTY || Math.sign(q) === -side) moves.push({ from, to: t });
+        if (q === EMPTY || (Math.sign(q) === -side && Math.abs(q) !== KRONE)) moves.push({ from, to: t });
       }
     } else if (type === KRONE) {
       for (const [dr, dc] of ALL8) {
@@ -159,7 +165,7 @@ export function genPseudo(board, side, fluchtAvail) {
         const t = idx(rr, cc);
         if (t === ASCH) continue;
         const q = board[t];
-        if (q === EMPTY || Math.sign(q) === -side) moves.push({ from, to: t });
+        if (q === EMPTY || (Math.sign(q) === -side && Math.abs(q) !== KRONE)) moves.push({ from, to: t });
       }
       if (fluchtAvail) {
         for (const [dr, dc] of ORTH) {
@@ -183,7 +189,8 @@ export function genPseudo(board, side, fluchtAvail) {
           if (q === EMPTY) {
             moves.push({ from, to: t });
           } else {
-            if (Math.sign(q) === -side) moves.push({ from, to: t });
+            // The Krone can never be taken (§6): capturing him is not a legal move.
+            if (Math.sign(q) === -side && Math.abs(q) !== KRONE) moves.push({ from, to: t });
             break;
           }
           rr += dr; cc += dc;
@@ -196,15 +203,17 @@ export function genPseudo(board, side, fluchtAvail) {
 
 // Isolation (§6). Returns { isolated, enemyTouch, kSq, open: [sq...], closed: [{sq, occ, threat, edge}] }
 // `open` includes Flucht destinations reachable by a fully legal Flucht leap.
-// A square counts toward condition 2 (enemyTouch) if it is occupied by an
-// enemy piece or threatened by one — even a square filled by the Krone's own court.
+// Condition 2 (enemyTouch) holds only when the Krone's own square is directly
+// threatened, or an enemy piece threatens a genuinely empty square — one held
+// by no piece of either colour. A threat against a square already filled, by
+// either side, contributes nothing: that door was never going to open for him.
 export function isolationInfo(board, side, fluchtAvail, full = false) {
   const kSq = findKrone(board, side);
   if (kSq === -1) return { isolated: false, enemyTouch: false, kSq, open: [], closed: [] };
   const r = rowOf(kSq), c = colOf(kSq);
   const open = [];
   const closed = [];
-  let enemyTouch = false;
+  let enemyTouch = attacked(board, kSq, -side); // a blade at his own throat
 
   for (const [dr, dc] of ALL8) {
     const rr = r + dr, cc = c + dc;
@@ -215,12 +224,10 @@ export function isolationInfo(board, side, fluchtAvail, full = false) {
       continue; // behaves as the board's edge (§2)
     }
     const q = board[i];
-    const thr = attacked(board, i, -side);
     if (q !== EMPTY) {
-      const enemyOcc = Math.sign(q) === -side;
-      if (enemyOcc || thr) enemyTouch = true;
-      if (full) closed.push({ sq: i, occ: enemyOcc ? 'enemy' : 'own', threat: thr });
-    } else if (thr) {
+      // Occupied by either colour: closed ground, but never part of the siege.
+      if (full) closed.push({ sq: i, occ: Math.sign(q) === -side ? 'enemy' : 'own', threat: false });
+    } else if (attacked(board, i, -side)) {
       enemyTouch = true;
       if (full) closed.push({ sq: i, occ: null, threat: true });
     } else {
@@ -231,7 +238,8 @@ export function isolationInfo(board, side, fluchtAvail, full = false) {
 
   // Die Flucht squares count toward Isolation when the path is *physically*
   // unobstructed (§6). Threats close a square but do not obstruct the path —
-  // and a threatened Flucht square counts toward condition 2 like any other.
+  // and a threatened Flucht square is a genuinely empty door nailed shut by
+  // the enemy alone, so it counts toward condition 2.
   if (fluchtAvail && (full || open.length === 0)) {
     for (const [dr, dc] of ORTH) {
       for (let d = 1; d <= 3; d++) {
