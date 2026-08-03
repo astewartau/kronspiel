@@ -377,11 +377,16 @@ export const PIECE_NAMES = {
   [PRALAT]: 'Prälat', [GESANDTER]: 'Gesandter', [BURGER]: 'Bürger',
 };
 
-export function notate(stateBefore, m) {
-  const piece = Math.abs(stateBefore.board[m.from]);
+// Move text without the piece symbol — callers prepend an icon of their choice.
+export function notateBody(stateBefore, m) {
   const capture = stateBefore.board[m.to] !== EMPTY;
-  let s = GLYPHS[piece] + ' ' + sqName(m.from) + (capture ? '×' : '–') + sqName(m.to);
+  let s = sqName(m.from) + (capture ? '×' : '–') + sqName(m.to);
   if (m.flucht) s += ' (Flucht)';
   if (m.promo) s += '=' + GLYPHS[GESANDTER];
   return s;
+}
+
+export function notate(stateBefore, m) {
+  const piece = Math.abs(stateBefore.board[m.from]);
+  return GLYPHS[piece] + ' ' + notateBody(stateBefore, m);
 }

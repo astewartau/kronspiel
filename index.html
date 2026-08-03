@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Kronspiel — Crown-play</title>
 <meta name="description" content="Kronspiel: an 11×11 court-game of Isolation. A Krone is never captured — he is only isolated.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -22,6 +22,7 @@
       </div>
       <nav class="top-actions">
         <button id="btn-rules" class="btn ghost">Rules</button>
+        <button id="btn-options" class="btn ghost">Options</button>
         <button id="btn-new" class="btn primary">New Game</button>
       </nav>
     </div>
@@ -30,6 +31,11 @@
   <main class="table">
 
     <section class="board-column">
+      <div class="focus-hud">
+        <button id="btn-focus-undo" class="btn mini">Undo</button>
+        <span id="focus-status"></span>
+        <button id="btn-focus-exit" class="btn mini">Exit</button>
+      </div>
       <div class="player-bar" id="bar-top">
         <span class="court-sigil ash">♛</span>
         <span class="court-name" id="name-top">The Ash Court</span>
@@ -138,12 +144,12 @@
 
       <h3>The pieces</h3>
       <ul>
-        <li><strong>♚ Krone</strong> — one square in any direction. Never captured; see Isolation.</li>
-        <li><strong>♛ Kanzler</strong> (×2) — any distance in any direction. Each side has two, flanking the Krone from the first move.</li>
-        <li><strong>♜ Marschall</strong> — any distance orthogonally.</li>
-        <li><strong>♝ Prälat</strong> — any distance diagonally.</li>
-        <li><strong>♞ Gesandter</strong> — the broken L-step; leaps over anything in its path.</li>
-        <li><strong>♟ Bürger</strong> — one square forward (two on its first move), capturing one square diagonally forward. A Bürger reaching the far rank promotes — <em>only ever</em> to a Gesandter. There is no en passant.</li>
+        <li><strong><span class="rule-ico" data-piece="1"></span> Krone</strong> — one square in any direction. Never captured; see Isolation.</li>
+        <li><strong><span class="rule-ico" data-piece="2"></span> Kanzler</strong> (×2) — any distance in any direction. Each side has two, flanking the Krone from the first move.</li>
+        <li><strong><span class="rule-ico" data-piece="3"></span> Marschall</strong> — any distance orthogonally.</li>
+        <li><strong><span class="rule-ico" data-piece="4"></span> Prälat</strong> — any distance diagonally.</li>
+        <li><strong><span class="rule-ico" data-piece="5"></span> Gesandter</strong> — the broken L-step; leaps over anything in its path.</li>
+        <li><strong><span class="rule-ico" data-piece="6"></span> Bürger</strong> — one square forward (two on its first move), capturing one square diagonally forward. A Bürger reaching the far rank promotes — <em>only ever</em> to a Gesandter. There is no en passant.</li>
       </ul>
 
       <h3>Die Flucht</h3>
@@ -176,6 +182,24 @@
   </div>
 </div>
 
+<!-- Options dialog -->
+<div class="overlay hidden" id="ov-options">
+  <div class="dialog">
+    <h2>Options</h2>
+    <div class="field">
+      <span class="field-label">Piece style</span>
+      <div class="seg" id="seg-pieces">
+        <button data-v="sigils" class="seg-btn active">Court Sigils</button>
+        <button data-v="classic" class="seg-btn">Classic Glyphs</button>
+      </div>
+    </div>
+    <div class="pieceset-preview" id="pieceset-preview"></div>
+    <div class="dialog-actions">
+      <button class="btn primary" id="btn-options-close">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirm dialog (parley / resign / new-game-in-progress) -->
 <div class="overlay hidden" id="ov-confirm">
   <div class="dialog">
@@ -201,6 +225,7 @@
   </div>
 </div>
 <button class="btn result-chip hidden" id="btn-show-result">Show Result</button>
+<button class="focus-btn" id="btn-focus" title="Full-screen view" aria-label="Toggle full-screen view">⛶</button>
 
 <script type="module" src="js/main.js"></script>
 </body>

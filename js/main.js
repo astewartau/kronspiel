@@ -1,22 +1,24 @@
 // Kronspiel UI — rendering, interaction, game flow.
 
 import {
-  N, ASCH, EMPTY, KRONE, BURGER, GESANDTER, BONE, ASH,
+  N, ASCH, EMPTY, KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER, BONE, ASH,
   idx, rowOf, colOf,
   initialState, genLegal, apply, turnStartResult, claimableDraws,
-  isolationInfo, notate, serialize, deserialize, sqName,
-  GLYPHS, PIECE_NAMES,
+  isolationInfo, notateBody, serialize, deserialize,
 } from './engine.js';
 import { findBestMove, quickEval } from './ai.js';
+import { PIECE_SETS, pieceHTML } from './pieces.js';
 
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'kronspiel-save-v1';
+const PREFS_KEY = 'kronspiel-prefs-v1';
 
 // ---------------------------------------------------------------------------
 // Game session state
 // ---------------------------------------------------------------------------
 
 let settings = { mode: 'hotseat', humanSide: BONE, level: 'courtier' };
+let prefs = { pieceSet: 'sigils' };
 let hist = [];          // engine states, hist[hist.length-1] is current
 let logEntries = [];    // [{ply, side, text}]
 let capturedBy = { [BONE]: [], [ASH]: [] }; // piece types captured BY each side
@@ -96,7 +98,7 @@ function placePiece(el, sq) {
 function makePieceEl(val, sq) {
   const el = document.createElement('div');
   el.className = 'piece ' + (val > 0 ? 'bone-piece' : 'ash-piece');
-  el.textContent = GLYPHS[Math.abs(val)];
+  el.innerHTML = pieceHTML(prefs.pieceSet, Math.abs(val));
   placePiece(el, sq);
   piecesEl.appendChild(el);
   return el;
@@ -128,7 +130,7 @@ function animateMove(m) {
     pieceEls.set(m.to, el);
     setTimeout(() => {
       el.classList.remove('moving');
-      if (m.promo) el.textContent = GLYPHS[GESANDTER];
+      if (m.promo) el.innerHTML = pieceHTML(prefs.pieceSet, GESANDTER);
     }, 230);
   }
   if (m.promo && !el) syncPieces();
@@ -209,6 +211,7 @@ function paintBars() {
     }
     name.textContent = label;
     sig.className = 'court-sigil ' + (side === BONE ? 'bone' : 'ash');
+    sig.innerHTML = pieceHTML(prefs.pieceSet, KRONE);
     bar.classList.toggle('active', !result && state.turn === side);
     const info = isolationInfo(state.board, side, state.flucht[side], true);
     const n = info.open.length;
@@ -217,26 +220,30 @@ function paintBars() {
     // captured pieces: pieces this side has taken (of the enemy's colour)
     const taken = capturedBy[side];
     cap.innerHTML = taken
-      .map((t) => `<span class="${side === BONE ? 'ash-piece' : 'bone-piece'}">${GLYPHS[t]}</span>`)
+      .map((t) => `<span class="${side === BONE ? 'ash-piece' : 'bone-piece'}">${pieceHTML(prefs.pieceSet, t)}</span>`)
       .join('');
   }
 }
 
 function paintStatus() {
-  const st = $('status'), sub = $('substatus');
+  const st = $('status'), sub = $('substatus'), fs = $('focus-status');
   st.classList.toggle('thinking', aiThinking);
+  fs.classList.toggle('thinking', aiThinking);
   if (result) {
     st.textContent = result.label;
+    fs.textContent = result.label;
     sub.textContent = result.short || '';
     return;
   }
   const state = cur();
   if (aiThinking) {
     st.textContent = 'The Court deliberates';
+    fs.textContent = 'The Court deliberates';
     sub.textContent = '';
     return;
   }
   st.textContent = `${sideName(state.turn)} to move.`;
+  fs.textContent = st.textContent;
   const info = isolationInfo(state.board, state.turn, state.flucht[state.turn], true);
   if (info.open.length === 0) {
     sub.textContent = 'The Krone stands walled in by his own court — one enemy touch from ruin.';
@@ -252,6 +259,7 @@ function paintStatus() {
 function paintControls() {
   const interactive = !result && !aiThinking;
   $('btn-undo').disabled = hist.length < 2 || aiThinking;
+  $('btn-focus-undo').disabled = $('btn-undo').disabled;
   $('btn-parley').disabled = !interactive;
   $('btn-resign').disabled = !interactive;
   const claims = !result && !aiThinking ? claimableDraws(cur()) : { longSiege: false, longWinter: false };
@@ -262,6 +270,17 @@ function paintControls() {
     $('btn-siege').classList.contains('hidden') && $('btn-winter').classList.contains('hidden'));
 }
 
+function logSpan(entry, cls) {
+  const span = document.createElement('span');
+  span.className = 'm ' + cls;
+  if (entry.text) {
+    span.textContent = entry.text; // entries from saves made before piece styles
+  } else {
+    span.innerHTML = pieceHTML(prefs.pieceSet, entry.piece) + ' ' + entry.body;
+  }
+  return span;
+}
+
 function paintLog() {
   const ol = $('movelog');
   ol.innerHTML = '';
@@ -270,16 +289,9 @@ function paintLog() {
     const n = document.createElement('span');
     n.className = 'n';
     n.textContent = (i / 2 + 1) + '.';
-    const m1 = document.createElement('span');
-    m1.className = 'm bone-piece';
-    m1.textContent = logEntries[i].text;
+    const m1 = logSpan(logEntries[i], 'bone-piece');
     li.append(n, m1);
-    if (logEntries[i + 1]) {
-      const m2 = document.createElement('span');
-      m2.className = 'm ash-piece';
-      m2.textContent = logEntries[i + 1].text;
-      li.append(m2);
-    }
+    if (logEntries[i + 1]) li.append(logSpan(logEntries[i + 1], 'ash-piece'));
     ol.appendChild(li);
   }
   ol.scrollTop = ol.scrollHeight;
@@ -320,10 +332,15 @@ function onBoardClick(e) {
 function playMove(m) {
   const before = cur();
   const capturedVal = before.board[m.to];
-  const text = notate(before, m);
+  const entry = {
+    ply: before.ply,
+    side: before.turn,
+    piece: Math.abs(before.board[m.from]),
+    body: notateBody(before, m),
+  };
   const next = apply(before, m);
   hist.push(next);
-  logEntries.push({ ply: before.ply, side: before.turn, text });
+  logEntries.push(entry);
   if (capturedVal !== EMPTY) capturedBy[before.turn].push(Math.abs(capturedVal));
   lastMove = { from: m.from, to: m.to };
   animateMove(m);
@@ -533,6 +550,17 @@ function save() {
   } catch { /* storage unavailable — play on without saving */ }
 }
 
+function savePrefs() {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* no storage */ }
+}
+
+function loadPrefs() {
+  try {
+    const o = JSON.parse(localStorage.getItem(PREFS_KEY));
+    if (o && PIECE_SETS[o.pieceSet]) prefs = o;
+  } catch { /* keep defaults */ }
+}
+
 function load() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
@@ -561,6 +589,38 @@ function load() {
 // ---------------------------------------------------------------------------
 // Dialogs
 // ---------------------------------------------------------------------------
+
+// Re-render everything that shows a piece after the style changes.
+function applyPieceSet() {
+  syncPieces();
+  paint();
+  paintLog();
+  paintRuleIcons();
+}
+
+function paintRuleIcons() {
+  document.querySelectorAll('.rule-ico').forEach((el) => {
+    el.innerHTML = pieceHTML(prefs.pieceSet, +el.dataset.piece);
+  });
+}
+
+function paintPieceSetPreview() {
+  const types = [KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER];
+  $('pieceset-preview').innerHTML = types
+    .map((t, i) => `<div class="pv ${i % 2 ? 'ash-piece' : 'bone-piece'}">${pieceHTML(prefs.pieceSet, t)}</div>`)
+    .join('');
+}
+
+function setFocus(on) {
+  document.body.classList.toggle('focus', on);
+  if (on) {
+    // Native fullscreen where the platform allows it (not iOS Safari);
+    // the CSS focus layout stands on its own either way.
+    document.documentElement.requestFullscreen?.()?.catch?.(() => {});
+  } else if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+}
 
 let confirmYes = null;
 
@@ -611,6 +671,21 @@ function wireUi() {
   $('btn-rules').addEventListener('click', () => $('ov-rules').classList.remove('hidden'));
   $('btn-rules-close').addEventListener('click', () => $('ov-rules').classList.add('hidden'));
 
+  $('btn-options').addEventListener('click', () => {
+    const seg = $('seg-pieces');
+    seg.querySelectorAll('.seg-btn').forEach((b) =>
+      b.classList.toggle('active', b.dataset.v === prefs.pieceSet));
+    paintPieceSetPreview();
+    $('ov-options').classList.remove('hidden');
+  });
+  $('btn-options-close').addEventListener('click', () => $('ov-options').classList.add('hidden'));
+  wireSeg('seg-pieces', (v) => {
+    prefs.pieceSet = v;
+    savePrefs();
+    paintPieceSetPreview();
+    applyPieceSet();
+  });
+
   $('btn-confirm-no').addEventListener('click', () => { confirmYes = null; $('ov-confirm').classList.add('hidden'); });
   $('btn-confirm-yes').addEventListener('click', () => {
     $('ov-confirm').classList.add('hidden');
@@ -637,8 +712,17 @@ function wireUi() {
   $('btn-siege').addEventListener('click', () => { setResult({ type: 'siege' }); paint(); save(); });
   $('btn-winter').addEventListener('click', () => { setResult({ type: 'winter' }); paint(); save(); });
 
+  // Full-screen focus mode
+  $('btn-focus').addEventListener('click', () => setFocus(!document.body.classList.contains('focus')));
+  $('btn-focus-exit').addEventListener('click', () => setFocus(false));
+  $('btn-focus-undo').addEventListener('click', undo);
+  document.addEventListener('fullscreenchange', () => {
+    // leaving native fullscreen (back gesture, Esc) also leaves focus mode
+    if (!document.fullscreenElement) document.body.classList.remove('focus');
+  });
+
   // click outside a dialog closes the passive ones
-  for (const id of ['ov-rules', 'ov-new']) {
+  for (const id of ['ov-rules', 'ov-new', 'ov-options']) {
     $(id).addEventListener('click', (e) => {
       if (e.target === $(id)) $(id).classList.add('hidden');
     });
@@ -649,12 +733,14 @@ function wireUi() {
 // Boot
 // ---------------------------------------------------------------------------
 
+loadPrefs();
 wireUi();
 const restored = load();
 if (!restored) {
   hist = [initialState()];
 }
 buildBoard();
+paintRuleIcons();
 newGame(false);
 if (result) {
   $('btn-show-result').classList.remove('hidden');

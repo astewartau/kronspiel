@@ -245,16 +245,21 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
   const m = findBestMove(s, 'courtier');
   ok(m && genLegal(s).some(x => x.from === m.from && x.to === m.to), 'AI produces a legal move');
 
-  // AI finds a one-move isolation win
+  // AI finds a one-move isolation win. Bone Krone a1 fully self-walled
+  // (a2/b2 Bürger, b1 Marschall) but with no enemy touch yet; the Ash
+  // Kanzler on e8 threatens none of those squares, and can win at once
+  // (e.g. e8–e2 touches b2 along the second rank, e8–b5 down the b-file).
+  // Spymaster has zero jitter, so only the immediate wins tie for best.
   const b = emptyBoard();
   b[idx(0, 0)] = KRONE * BONE;     // a1
   b[idx(1, 0)] = BURGER * BONE;    // a2 own
   b[idx(1, 1)] = BURGER * BONE;    // b2 own
-  b[idx(0, 1)] = MARSCHALL * BONE; // b1 own — fully self-walled, no enemy touch yet
-  b[idx(5, 4)] = KANZLER * ASH;    // e6 → can reach e1? then threatens... find: ash Kanzler to b5(idx(4,1)): b-file down blocked by b2? b5→b4,b3,b2(occupied,bone) → touches b2 → isolation!
+  b[idx(0, 1)] = MARSCHALL * BONE; // b1 own
+  b[idx(7, 4)] = KANZLER * ASH;    // e8
   b[idx(10, 10)] = KRONE * ASH;
   const st2 = state(b, ASH, { [BONE]: false, [ASH]: false });
-  const mv = findBestMove(st2, 'courtier');
+  ok(!isolationInfo(st2.board, BONE, false).isolated, 'test position: Bone not yet isolated');
+  const mv = findBestMove(st2, 'spymaster');
   const after = apply(st2, mv);
   const rr = turnStartResult(after, genLegal(after));
   ok(rr && rr.type === 'isolation' && rr.loser === BONE, 'AI finds a one-move Isolation');
