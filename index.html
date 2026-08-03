@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kronspiel — Crown-play</title>
+<meta name="description" content="Kronspiel: an 11×11 court-game of Isolation. A Krone is never captured — he is only isolated.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>♚</text></svg>">
+</head>
+<body>
+<div class="app">
+
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="title-block">
+        <h1>Kronspiel</h1>
+        <p class="tagline">A Krone is never captured. He is only isolated.</p>
+      </div>
+      <nav class="top-actions">
+        <button id="btn-rules" class="btn ghost">Rules</button>
+        <button id="btn-new" class="btn primary">New Game</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="table">
+
+    <section class="board-column">
+      <div class="player-bar" id="bar-top">
+        <span class="court-sigil ash">♛</span>
+        <span class="court-name" id="name-top">The Ash Court</span>
+        <span class="escape-badge" id="esc-top" title="Open escape squares around this Krone"></span>
+        <span class="captured" id="cap-top"></span>
+      </div>
+
+      <div class="board-frame">
+        <div class="board-inner">
+          <div id="ranks" class="ranks"></div>
+          <div class="board-and-files">
+            <div id="board" class="board" aria-label="Kronspiel board">
+              <div id="pieces" class="pieces-layer"></div>
+              <div id="marks" class="marks-layer"></div>
+            </div>
+            <div id="files" class="files"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="player-bar" id="bar-bottom">
+        <span class="court-sigil bone">♛</span>
+        <span class="court-name" id="name-bottom">The Bone Court</span>
+        <span class="escape-badge" id="esc-bottom" title="Open escape squares around this Krone"></span>
+        <span class="captured" id="cap-bottom"></span>
+      </div>
+    </section>
+
+    <aside class="sidebar">
+      <div class="status-card">
+        <div id="status" class="status">The Bone Court to move.</div>
+        <div id="substatus" class="substatus"></div>
+      </div>
+
+      <div class="controls">
+        <button id="btn-undo" class="btn">Undo</button>
+        <button id="btn-flip" class="btn">Flip Board</button>
+        <button id="btn-parley" class="btn">Offer Parley</button>
+        <button id="btn-resign" class="btn danger">Resign</button>
+      </div>
+
+      <div id="claims" class="claims hidden">
+        <button id="btn-siege" class="btn claim hidden">Claim the Long Siege</button>
+        <button id="btn-winter" class="btn claim hidden">Claim the Long Winter</button>
+      </div>
+
+      <label class="toggle">
+        <input type="checkbox" id="chk-escapes">
+        <span>Show the Krone's escape squares</span>
+      </label>
+
+      <div class="log-card">
+        <h2>Chronicle</h2>
+        <ol id="movelog" class="movelog"></ol>
+      </div>
+    </aside>
+
+  </main>
+
+  <footer class="colophon">
+    <p>“You need not kill a king to finish him. You need only see that he has nowhere left to stand.”</p>
+    <p class="attribution">— Knight-Captain Sigismund von Höthbacher, <em>Ordo Theoderici Cohortis Niger</em></p>
+  </footer>
+</div>
+
+<!-- New game dialog -->
+<div class="overlay hidden" id="ov-new">
+  <div class="dialog">
+    <h2>A New Game</h2>
+    <div class="field">
+      <span class="field-label">Opponent</span>
+      <div class="seg" id="seg-mode">
+        <button data-v="hotseat" class="seg-btn active">Two Players</button>
+        <button data-v="ai" class="seg-btn">Against the Court</button>
+      </div>
+    </div>
+    <div class="field ai-only">
+      <span class="field-label">You command</span>
+      <div class="seg" id="seg-side">
+        <button data-v="bone" class="seg-btn active">The Bone Court</button>
+        <button data-v="ash" class="seg-btn">The Ash Court</button>
+      </div>
+    </div>
+    <div class="field ai-only">
+      <span class="field-label">The Court plays as</span>
+      <div class="seg" id="seg-level">
+        <button data-v="novice" class="seg-btn">Novice</button>
+        <button data-v="courtier" class="seg-btn active">Courtier</button>
+        <button data-v="spymaster" class="seg-btn">Spymaster</button>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn ghost" id="btn-new-cancel">Cancel</button>
+      <button class="btn primary" id="btn-new-start">Begin</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rules dialog -->
+<div class="overlay hidden" id="ov-rules">
+  <div class="dialog wide">
+    <h2>The Rules, Briefly</h2>
+    <div class="rules-body">
+      <h3>The board</h3>
+      <p>Eleven by eleven, ash-grey and bone-pale. The centre square — the <strong>Aschenstuhl</strong>, the Ash Seat — is permanently empty. No piece may ever occupy it, sliding pieces cannot see past it, and a Gesandter may leap over it but never land on it. For the Krone it behaves exactly as the edge of the board: a square he cannot step onto, but never an enemy hand at his throat.</p>
+
+      <h3>The pieces</h3>
+      <ul>
+        <li><strong>♚ Krone</strong> — one square in any direction. Never captured; see Isolation.</li>
+        <li><strong>♛ Kanzler</strong> (×2) — any distance in any direction. Each side has two, flanking the Krone from the first move.</li>
+        <li><strong>♜ Marschall</strong> — any distance orthogonally.</li>
+        <li><strong>♝ Prälat</strong> — any distance diagonally.</li>
+        <li><strong>♞ Gesandter</strong> — the broken L-step; leaps over anything in its path.</li>
+        <li><strong>♟ Bürger</strong> — one square forward (two on its first move), capturing one square diagonally forward. A Bürger reaching the far rank promotes — <em>only ever</em> to a Gesandter. There is no en passant.</li>
+      </ul>
+
+      <h3>Die Flucht</h3>
+      <p>An unmoved Krone may, once per game, leap up to three squares in a straight orthogonal line — provided every square he passes through and lands on is empty and unthreatened. Any ordinary Krone move forfeits the option forever.</p>
+
+      <h3>Isolation — the only way to win</h3>
+      <p>There is no check, no checkmate, and no stalemate-as-draw. At the start of every turn, before any piece moves, the Krone of the player to move is examined. He is <strong>Isolated</strong> — and the game instantly lost — when both of the following hold:</p>
+      <ol>
+        <li>Every square adjacent to him (including any square still reachable by Die Flucht) is occupied by a piece of <em>either</em> colour, threatened by an enemy piece, or off the board.</li>
+        <li>At least one of those squares is occupied or threatened by an <em>enemy</em> piece.</li>
+      </ol>
+      <p>A Krone is never undone by his own house alone — he is undone by his own house under siege. It makes no difference that his own men built most of the wall.</p>
+      <p><strong>There is no rescue.</strong> Isolation is judged before the court is given leave to act. A piece that could have captured the offending enemy, or blocked its line, does not save him — the move that would have done it always comes one turn too late. The one safeguard the rules provide: you may never voluntarily make a move that isolates your own Krone, just as the Krone may never step into an enemy's line.</p>
+
+      <h3>Draws</h3>
+      <ul>
+        <li><strong>The Long Siege</strong> — the same position, same player to move, a third time; either player may claim.</li>
+        <li><strong>The Long Winter</strong> — fifty moves by each side with no Bürger moved and no capture; either player may claim.</li>
+        <li><strong>The Empty Court</strong> — lone Krone against lone Krone; drawn automatically.</li>
+        <li><strong>Mutual Ruin</strong> — both Krone isolated at the start of the same round; drawn, and considered the most honest outcome the board can produce.</li>
+        <li><strong>Parley</strong> — a draw agreed between the players at any point.</li>
+      </ul>
+
+      <h3>Conventions of this table</h3>
+      <p>The Bone Court moves first. Ranks run 1–11 from the Bone home rank; files run a–k from the left of the Bone player.</p>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn primary" id="btn-rules-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm dialog (parley / resign / new-game-in-progress) -->
+<div class="overlay hidden" id="ov-confirm">
+  <div class="dialog">
+    <h2 id="confirm-title">Are you certain?</h2>
+    <p id="confirm-text"></p>
+    <div class="dialog-actions">
+      <button class="btn ghost" id="btn-confirm-no">No</button>
+      <button class="btn primary" id="btn-confirm-yes">Yes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Game over -->
+<div class="overlay hidden" id="ov-over">
+  <div class="dialog gameover">
+    <div class="gameover-rule"></div>
+    <h2 id="over-title"></h2>
+    <p id="over-text"></p>
+    <div class="dialog-actions">
+      <button class="btn ghost" id="btn-over-board">View the Board</button>
+      <button class="btn primary" id="btn-over-new">New Game</button>
+    </div>
+  </div>
+</div>
+<button class="btn result-chip hidden" id="btn-show-result">Show Result</button>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
