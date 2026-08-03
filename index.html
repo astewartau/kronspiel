@@ -65,9 +65,20 @@
     </section>
 
     <aside class="sidebar">
+      <div class="log-card tutor-card hidden" id="tutor-card">
+        <h2>The Primer <span id="tutor-step" class="tutor-step"></span></h2>
+        <h3 id="tutor-title" class="tutor-title"></h3>
+        <p id="tutor-text" class="tutor-text"></p>
+        <div class="tutor-actions">
+          <button id="btn-tutor-exit" class="btn mini ghost">Leave the Primer</button>
+          <button id="btn-tutor-next" class="btn mini primary">Continue</button>
+        </div>
+      </div>
+
       <div class="status-card">
         <div id="status" class="status">The Bone Court to move.</div>
         <div id="substatus" class="substatus"></div>
+        <div id="winter-clock" class="winter-clock hidden"></div>
       </div>
 
       <div class="controls">
@@ -88,7 +99,7 @@
       </label>
 
       <div class="log-card">
-        <h2>Chronicle</h2>
+        <h2 class="with-action">Chronicle <button id="btn-export" class="btn mini" title="Copy the game record as text">Copy</button></h2>
         <ol id="movelog" class="movelog"></ol>
       </div>
 
@@ -158,6 +169,7 @@
     </div>
     <p class="dialog-note online-only">Play travels directly between your two browsers; share the code by any messenger you like.</p>
     <div class="dialog-actions">
+      <button class="btn ghost" id="btn-primer-new">First Time? The Primer</button>
       <button class="btn ghost" id="btn-new-cancel">Cancel</button>
       <button class="btn primary" id="btn-new-start">Begin</button>
     </div>
@@ -208,6 +220,7 @@
       <p>The Bone Court moves first. Ranks run 1–11 from the Bone home rank; files run a–k from the left of the Bone player.</p>
     </div>
     <div class="dialog-actions">
+      <button class="btn ghost" id="btn-primer-rules">Learn by Doing — the Primer</button>
       <button class="btn primary" id="btn-rules-close">Close</button>
     </div>
   </div>

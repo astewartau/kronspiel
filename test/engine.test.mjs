@@ -1,11 +1,11 @@
 // Engine rule tests — run with: node test/engine.test.mjs
 import {
   N, ASCH, EMPTY, KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER,
-  BONE, ASH, idx,
+  BONE, ASH, idx, colOf,
   initialState, genPseudo, genLegal, apply, attacked, isolationInfo,
-  turnStartResult, claimableDraws, positionKey, serialize, deserialize,
+  turnStartResult, claimableDraws, positionKey, serialize, deserialize, notateBody,
 } from '../js/engine.js';
-import { findBestMove } from '../js/ai.js';
+import { findBestMove, OPENINGS } from '../js/ai.js';
 
 let passed = 0, failed = 0;
 function ok(cond, name) {
@@ -295,6 +295,38 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
   const st = state(b, BONE);
   const r = turnStartResult(st, []);
   ok(r && r.type === 'mutual', 'Mutual Ruin is a draw');
+}
+
+// --- notation ---------------------------------------------------------------
+{
+  const s = initialState();
+  const dash = genPseudo(s.board, BONE, true).find(m => m.dash === 3 && colOf(m.from) === 5);
+  ok(notateBody(s, dash) === 'f2»f5', 'dash notation f2»f5');
+  const ba = emptyBoard();
+  ba[idx(4, 5)] = BURGER * BONE;
+  ba[idx(0, 0)] = KRONE * BONE;
+  ba[idx(10, 10)] = KRONE * ASH;
+  const ss = genPseudo(ba, BONE, false).find(m => m.sidestep && m.to === idx(5, 4));
+  ok(notateBody(state(ba), ss) === 'f5↷e6', 'side-step notation f5↷e6');
+}
+
+// --- AI opening plans -------------------------------------------------------
+{
+  ok(OPENINGS.length === 5 && OPENINGS.every(o => o.line.length >= 3), 'five named openings defined');
+  // A sound plan move from the start position is followed
+  const s = initialState();
+  const plan = { from: idx(1, 6), to: idx(2, 6) }; // g2-g3, the Closed Gate's first move
+  const m = findBestMove(s, 'courtier', Math.random, plan);
+  ok(m.from === plan.from && m.to === plan.to, 'AI follows a sound opening plan');
+  // A plan move the board refutes (hanging the Kanzler to a Bürger) is refused
+  const b = emptyBoard();
+  b[idx(0, 5)] = KRONE * BONE;
+  b[idx(10, 5)] = KRONE * ASH;
+  b[idx(3, 3)] = KANZLER * BONE;
+  b[idx(7, 2)] = BURGER * ASH;   // c8 guards d7
+  const bad = { from: idx(3, 3), to: idx(6, 3) }; // Kanzler d4-d7, en prise
+  const m2 = findBestMove(state(b), 'courtier', Math.random, bad);
+  ok(!(m2.from === bad.from && m2.to === bad.to), 'AI abandons a plan the board refutes');
 }
 
 // --- AI -------------------------------------------------------------------

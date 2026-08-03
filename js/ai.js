@@ -16,10 +16,22 @@ const VALUES = {
 const WIN = 100000;
 
 export const LEVELS = {
-  novice: { maxDepth: 1, timeMs: 300, jitter: 60, blunder: 0.25 },
-  courtier: { maxDepth: 3, timeMs: 700, jitter: 12, blunder: 0 },
-  spymaster: { maxDepth: 5, timeMs: 1600, jitter: 0, blunder: 0 },
+  novice: { maxDepth: 1, timeMs: 300, jitter: 60, blunder: 0.25, planMargin: 250 },
+  courtier: { maxDepth: 3, timeMs: 700, jitter: 12, blunder: 0, planMargin: 150 },
+  spymaster: { maxDepth: 5, timeMs: 1600, jitter: 0, blunder: 0, planMargin: 90 },
 };
+
+// Named openings (§8) as scripted own-side plans, in Bone coordinates —
+// mirrored when the Court commands Ash. A plan move is only played while it
+// stays within `planMargin` of the search's best answer; a deviation or a
+// tactically punished line abandons the book.
+export const OPENINGS = [
+  { name: 'the Closed Gate', line: ['g2-g3', 'e2-e3', 'c1-e2', 'i1-g2', 'f2-f3'] },
+  { name: 'the Sigismund Gambit', line: ['b2-b5', 'b1-b4', 'b4-f4'] },
+  { name: 'the Ashen Approach', line: ['f2-f3', 'e2-e3', 'g2-g3', 'e1-e2', 'g1-g2'] },
+  { name: 'the Drowned Flank', line: ['j2-j4', 'i1-j3', 'i2-i3', 'b2-b4', 'b1-b3'] },
+  { name: "the Beggar's Gate", line: ['a2-a4', 'k2-k4', 'a4-a5', 'k4-k5'] },
+];
 
 class Abort extends Error {}
 
@@ -42,10 +54,12 @@ function evaluate(board, side, fluchtMine, fluchtTheirs) {
       const advance = s === BONE ? rowOf(i) - 1 : (N - 2) - rowOf(i);
       adv += s * advance * 5;
     } else if (t !== KRONE) {
-      // nudge attackers toward the enemy Krone
+      // nudge attackers toward the enemy Krone. The Gesandter pulls hardest:
+      // it is the one piece that can lay a blade at a self-walled Krone's
+      // throat (§6), so its proximity is worth more than any other minor's.
       const target = s === side ? [kr, kc] : [rowOf(kMine), colOf(kMine)];
       const dist = Math.max(Math.abs(rowOf(i) - target[0]), Math.abs(colOf(i) - target[1]));
-      approach += s * (10 - dist) * 2;
+      approach += s * (10 - dist) * (t === GESANDTER ? 3 : 2);
     }
   }
 
@@ -57,6 +71,10 @@ function evaluate(board, side, fluchtMine, fluchtTheirs) {
   // Fully walled in and one enemy touch from ruin
   if (theirs.open.length === 0 && !theirs.enemyTouch) escapes += 90;
   if (mine.open.length === 0 && !mine.enemyTouch) escapes -= 90;
+  // Near-isolation pressure: the enemy already has a hand in (a blade at the
+  // throat or a claimed empty door) while the escapes run out
+  if (theirs.enemyTouch && theirs.open.length <= 1) escapes += 45;
+  if (mine.enemyTouch && mine.open.length <= 1) escapes -= 45;
 
   return side * (mat + adv + approach) + escapes;
 }
@@ -73,7 +91,9 @@ function orderMoves(board, moves) {
   return moves;
 }
 
-export function findBestMove(state, level, rng = Math.random) {
+// `planMove` ({from, to}, optional): the next move of a scripted opening.
+// It is played only if legal and within planMargin of the best root score.
+export function findBestMove(state, level, rng = Math.random, planMove = null) {
   const opts = LEVELS[level] || LEVELS.courtier;
   const board = new Int8Array(state.board);
   const flucht = { [BONE]: state.flucht[BONE], [ASH]: state.flucht[ASH] };
@@ -158,8 +178,14 @@ export function findBestMove(state, level, rng = Math.random) {
     if (!(e instanceof Abort)) throw e;
   }
 
-  // Personality: novices wobble, everyone else picks the best (with tiny jitter).
+  // A court playing its opening keeps to the script while the script holds up.
   const best = bestByDepth[0].v;
+  if (planMove) {
+    const planned = bestByDepth.find((x) => x.m.from === planMove.from && x.m.to === planMove.to);
+    if (planned && planned.v > -WIN / 2 && planned.v >= best - opts.planMargin) return planned.m;
+  }
+
+  // Personality: novices wobble, everyone else picks the best (with tiny jitter).
   if (opts.blunder > 0 && rng() < opts.blunder) {
     const pool = bestByDepth.filter((x) => x.v > -WIN / 2);
     return pool[Math.floor(rng() * pool.length)].m;

@@ -145,7 +145,7 @@ export function genPseudo(board, side, fluchtAvail) {
           } else if (f1 === ASCH && q === EMPTY) {
             // §2: a Bürger whose file runs into the Aschenstuhl (f5/f7) may
             // step diagonally around it — the game's one non-capturing diagonal.
-            moves.push({ from, to: t });
+            moves.push({ from, to: t, sidestep: true });
           }
         }
       }
@@ -386,9 +386,11 @@ export const PIECE_NAMES = {
 };
 
 // Move text without the piece symbol — callers prepend an icon of their choice.
+// Separators: × capture, » first-move dash, ↷ side-step around the throne.
 export function notateBody(stateBefore, m) {
   const capture = stateBefore.board[m.to] !== EMPTY;
-  let s = sqName(m.from) + (capture ? '×' : '–') + sqName(m.to);
+  const sep = capture ? '×' : m.dash ? '»' : m.sidestep ? '↷' : '–';
+  let s = sqName(m.from) + sep + sqName(m.to);
   if (m.flucht) s += ' (Flucht)';
   if (m.promo) s += '=' + GLYPHS[GESANDTER];
   return s;

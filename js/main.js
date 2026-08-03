@@ -2,13 +2,14 @@
 
 import {
   N, ASCH, EMPTY, KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER, BONE, ASH,
-  idx, rowOf, colOf,
-  initialState, genLegal, apply, turnStartResult, claimableDraws,
-  isolationInfo, notateBody, serialize, deserialize,
+  idx, rowOf, colOf, sqName, GLYPHS,
+  initialState, genPseudo, genLegal, apply, make, attacked, turnStartResult,
+  claimableDraws, isolationInfo, notateBody, serialize, deserialize,
 } from './engine.js';
-import { findBestMove, quickEval } from './ai.js';
+import { findBestMove, quickEval, OPENINGS } from './ai.js';
 import { PIECE_SETS, pieceHTML } from './pieces.js';
 import { Net, makeCode, normalizeCode } from './net.js';
+import { LESSONS, buildTutState, sqOf } from './tutorial.js';
 
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'kronspiel-save-v1';
@@ -36,10 +37,15 @@ let net = null;          // Net instance while an online session is live
 let oppHere = false;     // the other court is connected
 let hostRetries = 0;     // room-code collision retries
 
+let noticeText = null;   // transient substatus line: illegal-move hints, opening announcements
+let tut = null;          // { step } while the Primer is running
+let aiOpening = null;    // the Court's scripted opening for this game, or null
+
 const cur = () => hist[hist.length - 1];
 const sideName = (s) => (s === BONE ? 'The Bone Court' : 'The Ash Court');
 const isAiTurn = () => settings.mode === 'ai' && !result && cur().turn === -settings.humanSide;
 const isOnline = () => settings.mode === 'online';
+const isTutorial = () => settings.mode === 'tutorial';
 
 // ---------------------------------------------------------------------------
 // Board DOM
@@ -163,10 +169,13 @@ function paint() {
     ? isolationInfo(state.board, state.turn, state.flucht[state.turn], true)
     : null;
 
+  const tutMarks = tut ? tutMarkSet() : null;
+
   for (const el of squares) {
     const sq = +el.dataset.sq;
     el.classList.remove('sel', 'move', 'capture', 'flucht-target', 'last-from', 'last-to',
-      'esc-open', 'esc-enemy', 'esc-own', 'doom-enemy', 'doom-own', 'doom-krone', 'krone-warn');
+      'esc-open', 'esc-enemy', 'esc-own', 'doom-enemy', 'doom-own', 'doom-krone', 'krone-warn', 'tut-mark');
+    if (tutMarks && tutMarks.has(sq)) el.classList.add('tut-mark');
     if (lastMove) {
       if (sq === lastMove.from) el.classList.add('last-from');
       if (sq === lastMove.to) el.classList.add('last-to');
@@ -238,6 +247,13 @@ function paintStatus() {
   const st = $('status'), sub = $('substatus'), fs = $('focus-status');
   st.classList.toggle('thinking', aiThinking);
   fs.classList.toggle('thinking', aiThinking);
+  paintWinterClock();
+  if (isTutorial()) {
+    st.textContent = 'The Primer';
+    fs.textContent = 'The Primer';
+    sub.textContent = noticeText || '';
+    return;
+  }
   if (result) {
     st.textContent = result.label;
     fs.textContent = result.label;
@@ -262,6 +278,10 @@ function paintStatus() {
   }
   st.textContent = `${sideName(state.turn)} to move.`;
   fs.textContent = st.textContent;
+  if (noticeText) {
+    sub.textContent = noticeText;
+    return;
+  }
   const info = isolationInfo(state.board, state.turn, state.flucht[state.turn], true);
   if (info.open.length === 0) {
     sub.textContent = 'The Krone stands walled in by his own court — one enemy touch from ruin.';
@@ -274,13 +294,24 @@ function paintStatus() {
   }
 }
 
+// The Long Winter approaches: surface the silent-move clock once it matters.
+function paintWinterClock() {
+  const el = $('winter-clock');
+  const clock = cur().clock;
+  const show = !result && !isTutorial() && clock >= 60;
+  el.classList.toggle('hidden', !show);
+  if (show) {
+    el.textContent = `The Long Winter nears — ${Math.floor(clock / 2)} of 50 silent moves.`;
+  }
+}
+
 function paintControls() {
-  const interactive = !result && !aiThinking;
-  $('btn-undo').disabled = hist.length < 2 || aiThinking || isOnline();
+  const interactive = !result && !aiThinking && !isTutorial();
+  $('btn-undo').disabled = hist.length < 2 || aiThinking || isOnline() || isTutorial();
   $('btn-focus-undo').disabled = $('btn-undo').disabled;
   $('btn-parley').disabled = !interactive || (isOnline() && !oppHere);
   $('btn-resign').disabled = !interactive || (isOnline() && !oppHere);
-  const claims = !result && !aiThinking ? claimableDraws(cur()) : { longSiege: false, longWinter: false };
+  const claims = interactive ? claimableDraws(cur()) : { longSiege: false, longWinter: false };
   const humanCanClaim = settings.mode === 'hotseat' || isOnline() || cur().turn === settings.humanSide;
   $('btn-siege').classList.toggle('hidden', !(claims.longSiege && humanCanClaim));
   $('btn-winter').classList.toggle('hidden', !(claims.longWinter && humanCanClaim));
@@ -324,16 +355,27 @@ function onBoardClick(e) {
   if (!sqEl || result || aiThinking) return;
   if (settings.mode === 'ai' && cur().turn !== settings.humanSide) return;
   if (isOnline() && (!oppHere || !net?.connected || cur().turn !== settings.humanSide)) return;
+  if (isTutorial() && !LESSONS[tut.step]?.expect) return; // narration steps: the board rests
   const sq = +sqEl.dataset.sq;
   const state = cur();
+  noticeText = null;
 
   if (selection !== null) {
     const mv = legalCache.find((m) => m.from === selection && m.to === sq);
     if (mv) {
+      if (isTutorial() && !tutAllows(mv)) {
+        noticeText = LESSONS[tut.step].expect.hint;
+        selection = null;
+        paint();
+        return;
+      }
       selection = null;
       playMove(mv);
       return;
     }
+    // Not a legal destination — explain why, when there is a why (§6 safeguards)
+    const hint = illegalHint(selection, sq);
+    if (hint) noticeText = hint;
   }
   const p = state.board[sq];
   if (p !== EMPTY && Math.sign(p) === state.turn) {
@@ -344,12 +386,44 @@ function onBoardClick(e) {
   paint();
 }
 
+// If from→to fits the piece's movement but is barred by a rule, say which rule.
+function illegalHint(from, to) {
+  const state = cur();
+  const p = state.board[from];
+  if (p === EMPTY || Math.sign(p) !== state.turn) return null;
+  const q = state.board[to];
+  if (q !== EMPTY && Math.abs(q) === KRONE && Math.sign(q) === -state.turn) {
+    // reachable if the same square held an ordinary piece?
+    const probe = new Int8Array(state.board);
+    probe[to] = BURGER * -state.turn;
+    if (genPseudo(probe, state.turn, false).some((m) => m.from === from && m.to === to)) {
+      return 'The Krone cannot be taken. Only Isolation ends his reign.';
+    }
+    return null;
+  }
+  const pm = genPseudo(state.board, state.turn, state.flucht[state.turn])
+    .find((m) => m.from === from && m.to === to);
+  if (!pm) return null; // not that piece's move at all — no lecture needed
+  const b = new Int8Array(state.board);
+  const u = make(b, pm);
+  const movedKrone = Math.abs(u.piece) === KRONE;
+  if (movedKrone && attacked(b, pm.to, -state.turn)) {
+    return 'The Krone may never step into an enemy’s line.';
+  }
+  const fluchtAfter = state.flucht[state.turn] && !movedKrone;
+  if (isolationInfo(b, state.turn, fluchtAfter).isolated) {
+    return 'Forbidden — that move would isolate your own Krone.';
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Game flow
 // ---------------------------------------------------------------------------
 
 function playMove(m, fromRemote = false) {
   const before = cur();
+  noticeText = null;
   if (isOnline() && !fromRemote) {
     net?.send({ t: 'move', m: { from: m.from, to: m.to }, ply: before.ply });
   }
@@ -372,6 +446,14 @@ function playMove(m, fromRemote = false) {
 function afterPositionChange() {
   const state = cur();
   legalCache = result ? [] : genLegal(state);
+
+  if (isTutorial()) {
+    // No results, no AI, no saving: the Primer narrates its own endings.
+    paint();
+    paintLog();
+    if (tut && LESSONS[tut.step]?.expect) tutAdvance();
+    return;
+  }
 
   if (!result) {
     const end = turnStartResult(state, legalCache);
@@ -455,18 +537,46 @@ function showGameOver() {
 // AI
 // ---------------------------------------------------------------------------
 
+// The Court's next scripted opening move, translated to board squares
+// (mirrored when the Court commands Ash), or null once off-book.
+function aiPlanMove() {
+  if (!aiOpening) return null;
+  const aiSide = -settings.humanSide;
+  const played = logEntries.filter((e) => e.side === aiSide).length;
+  const text = aiOpening.line[played];
+  if (!text) return null;
+  const [a, b] = text.split('-');
+  const mirror = (name) => {
+    const r = parseInt(name.slice(1), 10) - 1;
+    const c = name.charCodeAt(0) - 97;
+    return aiSide === BONE ? idx(r, c) : idx(N - 1 - r, c);
+  };
+  return { from: mirror(a), to: mirror(b) };
+}
+
 function scheduleAiMove() {
   aiThinking = true;
   paint();
   const started = Date.now();
   setTimeout(() => {
-    const m = findBestMove(cur(), settings.level);
+    const plan = aiPlanMove();
+    const m = findBestMove(cur(), settings.level, Math.random, plan);
     const elapsed = Date.now() - started;
     const wait = Math.max(0, 450 - elapsed); // let the court appear to think
     setTimeout(() => {
       aiThinking = false;
-      if (m && !result) playMove(m);
-      else if (!result) afterPositionChange();
+      if (m && !result) {
+        const onBook = plan && m.from === plan.from && m.to === plan.to;
+        const firstBookMove = onBook && logEntries.filter((e) => e.side === -settings.humanSide).length === 0;
+        if (plan && !onBook) aiOpening = null; // the script no longer fits the board
+        playMove(m);
+        if (firstBookMove) {
+          noticeText = `The Court essays ${aiOpening.name}.`;
+          paintStatus();
+        }
+      } else if (!result) {
+        afterPositionChange();
+      }
     }, wait);
   }, 60);
 }
@@ -484,6 +594,11 @@ function newGame(fresh) {
     lastMove = null;
     selection = null;
     aiThinking = false;
+    noticeText = null;
+    // The Court picks an opening to essay — novices sometimes just wing it.
+    aiOpening = settings.mode === 'ai' && !(settings.level === 'novice' && Math.random() < 0.4)
+      ? OPENINGS[Math.floor(Math.random() * OPENINGS.length)]
+      : null;
   }
   syncPieces();
   legalCache = result ? [] : genLegal(cur());
@@ -570,7 +685,7 @@ function resign() {
 // ---------------------------------------------------------------------------
 
 function save() {
-  if (isOnline()) return; // online sessions live and die with the connection
+  if (isOnline() || isTutorial()) return; // these sessions are not persisted
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       settings: { ...settings },
@@ -580,6 +695,7 @@ function save() {
       result: result ? { ...result, info: null } : null,
       flipped,
       lastMove,
+      aiOpeningName: aiOpening ? aiOpening.name : null,
     }));
   } catch { /* storage unavailable — play on without saving */ }
 }
@@ -609,6 +725,7 @@ function load() {
     result = o.result || null;
     flipped = !!o.flipped;
     lastMove = o.lastMove || null;
+    aiOpening = OPENINGS.find((op) => op.name === o.aiOpeningName) || null;
     if (result && (result.type === 'isolation' || result.type === 'mutual')) {
       // recompute the doom overlay from the final position
       const s = cur();
@@ -619,6 +736,132 @@ function load() {
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// The Primer (tutorial)
+// ---------------------------------------------------------------------------
+
+function startTutorial() {
+  leaveOnline();
+  settings = { mode: 'tutorial', humanSide: BONE, level: 'courtier' };
+  result = null;
+  aiThinking = false;
+  aiOpening = null;
+  noticeText = null;
+  flipped = false;
+  tut = { step: -1 };
+  $('ov-new').classList.add('hidden');
+  $('ov-rules').classList.add('hidden');
+  $('ov-over').classList.add('hidden');
+  $('btn-show-result').classList.add('hidden');
+  $('tutor-card').classList.remove('hidden');
+  tutAdvance();
+  layoutBoard();
+}
+
+function tutAdvance() {
+  tut.step++;
+  if (tut.step >= LESSONS.length) { exitTutorial(); return; }
+  const s = LESSONS[tut.step];
+  noticeText = null;
+  if (s.setup) {
+    hist = [buildTutState(s.setup)];
+    logEntries = [];
+    capturedBy = { [BONE]: [], [ASH]: [] };
+    lastMove = null;
+    selection = null;
+    legalCache = genLegal(cur());
+    syncPieces();
+  }
+  if (s.escapes !== undefined) $('chk-escapes').checked = !!s.escapes;
+  $('tutor-step').textContent = `${tut.step + 1} of ${LESSONS.length}`;
+  $('tutor-title').textContent = s.title;
+  $('tutor-text').textContent = s.text;
+  $('btn-tutor-next').classList.toggle('hidden', !!s.expect);
+  $('btn-tutor-next').textContent = tut.step === LESSONS.length - 1 ? 'Finish' : 'Continue';
+  paint();
+  paintLog();
+}
+
+function tutAllows(m) {
+  const exp = LESSONS[tut.step]?.expect;
+  if (!exp) return false;
+  if (m.from !== sqOf(exp.from)) return false;
+  return !exp.to || exp.to.some((name) => sqOf(name) === m.to);
+}
+
+function tutMarkSet() {
+  const s = LESSONS[tut.step];
+  const set = new Set();
+  for (const name of s?.marks || []) set.add(sqOf(name));
+  if (s?.expect) {
+    set.add(sqOf(s.expect.from));
+    for (const name of s.expect.to || []) set.add(sqOf(name));
+  }
+  return set;
+}
+
+function exitTutorial() {
+  tut = null;
+  $('tutor-card').classList.add('hidden');
+  $('chk-escapes').checked = false;
+  noticeText = null;
+  // Return to whatever game was in progress before the Primer.
+  if (!load()) {
+    settings = { mode: 'hotseat', humanSide: BONE, level: 'courtier' };
+    hist = [initialState()];
+    logEntries = [];
+    capturedBy = { [BONE]: [], [ASH]: [] };
+    result = null;
+    lastMove = null;
+    flipped = false;
+  }
+  selection = null;
+  layoutBoard();
+  newGame(false);
+  if (result) $('btn-show-result').classList.remove('hidden');
+}
+
+// ---------------------------------------------------------------------------
+// Chronicle export
+// ---------------------------------------------------------------------------
+
+function recordText() {
+  const lines = ['Kronspiel — The Bone Court vs The Ash Court'];
+  if (settings.mode === 'ai') {
+    lines[0] += settings.humanSide === BONE
+      ? ' (Bone: you · Ash: the Court)'
+      : ' (Bone: the Court · Ash: you)';
+  }
+  lines.push('');
+  const entryText = (e) => (e.text ? e.text : `${GLYPHS[e.piece]} ${e.body}`);
+  for (let i = 0; i < logEntries.length; i += 2) {
+    const n = `${i / 2 + 1}.`.padEnd(4);
+    const bone = entryText(logEntries[i]).padEnd(16);
+    const ash = logEntries[i + 1] ? entryText(logEntries[i + 1]) : '';
+    lines.push((n + bone + ash).trimEnd());
+  }
+  if (result) {
+    lines.push('');
+    lines.push('Result: ' + result.label);
+  }
+  return lines.join('\n');
+}
+
+async function copyRecord() {
+  if (!logEntries.length) {
+    noticeText = 'The chronicle is still empty.';
+    paintStatus();
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(recordText());
+    noticeText = 'The chronicle is copied — paste it where you will.';
+  } catch {
+    noticeText = 'Copying failed — your browser withheld the clipboard.';
+  }
+  paintStatus();
 }
 
 // ---------------------------------------------------------------------------
@@ -689,7 +932,16 @@ function netStart(role, code) {
   }
 }
 
+function leaveTutorial() {
+  if (!tut) return;
+  tut = null;
+  $('tutor-card').classList.add('hidden');
+  $('chk-escapes').checked = false;
+  settings = { ...settings, mode: 'hotseat' };
+}
+
 function startHost(side) {
+  leaveTutorial();
   leaveOnline();
   settings = { mode: 'online', humanSide: side, level: 'courtier' };
   hist = [initialState()];
@@ -712,6 +964,7 @@ function startHost(side) {
 }
 
 function startJoin(code) {
+  leaveTutorial();
   leaveOnline();
   netStart('join', code);
 }
@@ -938,6 +1191,7 @@ function wireUi() {
   $('btn-new').addEventListener('click', () => $('ov-new').classList.remove('hidden'));
   $('btn-new-cancel').addEventListener('click', () => $('ov-new').classList.add('hidden'));
   $('btn-new-start').addEventListener('click', () => {
+    leaveTutorial();
     const mode = segValue('seg-mode');
     if (mode === 'online') {
       if (segValue('seg-net-role') === 'join') {
@@ -1010,6 +1264,15 @@ function wireUi() {
 
   $('btn-rules').addEventListener('click', () => $('ov-rules').classList.remove('hidden'));
   $('btn-rules-close').addEventListener('click', () => $('ov-rules').classList.add('hidden'));
+
+  // The Primer
+  $('btn-primer-rules').addEventListener('click', startTutorial);
+  $('btn-primer-new').addEventListener('click', startTutorial);
+  $('btn-tutor-next').addEventListener('click', () => { if (tut) tutAdvance(); });
+  $('btn-tutor-exit').addEventListener('click', () => { if (tut) exitTutorial(); });
+
+  // Chronicle export
+  $('btn-export').addEventListener('click', copyRecord);
 
   $('btn-options').addEventListener('click', () => {
     const seg = $('seg-pieces');
