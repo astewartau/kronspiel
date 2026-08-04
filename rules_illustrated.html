@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kronspiel — The Rules, Illustrated</title>
+<meta name="description" content="Kronspiel's distinctive rules shown on steppable boards: the Aschenstuhl, the Bürger's ways, Die Flucht, and Isolation.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>♚</text></svg>">
+<script type="module" src="js/demo.js"></script>
+<style>
+  :root {
+    --bg: #0f0d0b; --bg-2: #16130f; --panel: #1c1813; --panel-edge: #2e2820;
+    --ink: #d8cfbe; --ink-dim: #9a8f7c;
+    --gold: #c8a24a; --gold-bright: #e8c96a; --gold-pale: #f2dfa0; --gold-deep: #7a5f28;
+    --ember: #b8442f; --ember-soft: #d06a4a; --green: #6f9e5f;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(1200px 700px at 50% -10%, #262015 0%, transparent 60%),
+      radial-gradient(900px 600px at 90% 110%, #1c150d 0%, transparent 55%),
+      var(--bg);
+    color: var(--ink);
+    font-family: "EB Garamond", Georgia, serif;
+    font-size: 17.5px; line-height: 1.6;
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    background: radial-gradient(120% 90% at 50% 30%, transparent 60%, rgba(4,3,1,0.4) 100%);
+  }
+  .page { position: relative; z-index: 2; max-width: 880px; margin: 0 auto; padding: 40px 22px 60px; }
+  header { text-align: center; margin-bottom: 8px; }
+  h1 {
+    font-family: "Cinzel Decorative", "Cinzel", serif;
+    font-size: clamp(30px, 5.4vw, 46px); letter-spacing: 0.12em; margin: 0;
+    background: linear-gradient(105deg, var(--gold-deep) 0%, var(--gold) 28%, var(--gold-pale) 50%, var(--gold) 72%, var(--gold-deep) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 18px rgba(200,162,74,0.22));
+  }
+  .report-title {
+    font-family: "Cinzel", serif; font-size: clamp(17px, 2.6vw, 22px);
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); margin: 14px 0 4px;
+  }
+  .tagline { font-style: italic; color: var(--ink-dim); margin: 2px 0 0; }
+  .ornament { display: flex; align-items: center; gap: 14px; margin: 26px 0; }
+  .ornament::before, .ornament::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, #8a6d2e); }
+  .ornament::after { background: linear-gradient(90deg, #8a6d2e, transparent); }
+  .ornament span { color: var(--gold); font-size: 13px; letter-spacing: 6px; }
+  h2 { font-family: "Cinzel", serif; font-size: 19px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); margin: 44px 0 12px; }
+  h2 .num { color: #8a6d2e; margin-right: 10px; }
+  p { margin: 10px 0; }
+  strong { color: var(--gold-bright); font-weight: 600; }
+  blockquote { margin: 12px 0; padding: 8px 18px; border-left: 2px solid var(--gold-deep); font-style: italic; color: var(--ink-dim); font-size: 16px; }
+  .mono { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: 14px; background: #16120d; border: 1px solid #2e2820; border-radius: 3px; padding: 1px 6px; color: var(--gold-pale); }
+  footer { text-align: center; margin-top: 56px; color: #6e6350; font-style: italic; font-size: 14.5px; }
+  footer::before { content: "✦ ✦ ✦"; display: block; font-style: normal; font-size: 9px; letter-spacing: 8px; color: #56462a; margin-bottom: 12px; }
+  footer .attribution { font-size: 13px; }
+  a { color: var(--gold-bright); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>Kronspiel</h1>
+  <div class="report-title">The Rules, Illustrated</div>
+  <p class="tagline">The game's distinctive laws, shown on the board — step each figure with <span class="mono">‹ ›</span> or the arrow keys.</p>
+</header>
+
+<div class="ornament"><span>✦ ✦ ✦</span></div>
+
+<p>Kronspiel's movement is deliberately familiar; its four departures are not. Each one below is shown as a legal sequence replayed through the game's own engine. For the full text, see the <a href="Kronspiel_Rules.md">rulebook</a>; to play, the <a href="index.html">table is set</a>.</p>
+
+<h2><span class="num">I.</span>The Aschenstuhl — the Empty Throne</h2>
+<blockquote>“The only chair on the board that cannot be taken from you is the one no one is permitted to sit in.” — §2</blockquote>
+<p>The centre square belongs to no one, ever. Sliders cannot see past it; the Gesandter may leap it but never land on it; for the Krone it is a wall, never a blade. And a Bürger whose file runs into it — at f5 or f7 — may step diagonally around it: <strong>the game's one non-capturing diagonal</strong>. The figure shows both sides using the throne's flanks, ending with a capture on its very doorstep.</p>
+<kron-demo label="The Empty Throne" moves="f2-f5 f10-f7 f5-e6 f7-e6">
+  <script type="application/json">{
+    "0": { "note": "The two central Bürger will meet at the throne. The marked squares are its two side-doors.", "marks": ["e6", "g6"] },
+    "1": "1. f2–f5 — Bone's Bürger dashes to the throne's near side. His file now runs straight into the empty chair.",
+    "2": "1… f10–f7 — Ash mirrors, from the far side.",
+    "3": { "note": "2. f5–e6 — the side-step: blocked ahead by the throne, the Bürger walks diagonally around it onto an empty square. No capture — the one exception in the game.", "marks": ["g6"] },
+    "4": "2… f7×e6 — and Ash answers with an ordinary diagonal capture, taking the pilgrim at the throne's side. The empty chair watches; it always does."
+  }</script>
+</kron-demo>
+
+<h2><span class="num">II.</span>The Bürger's Ways</h2>
+<blockquote>“One square forward; on its first move only, it may instead advance one, two, or three squares in a straight line.” — §4</blockquote>
+<p>The commoner's whole career in one staged sparring game: the first-move dash, the long march, the diagonal capture, and the reward at the end of the road — promotion, <strong>only ever to a Gesandter</strong>. There is no en passant in Kronspiel; the enemy here is polite, but nothing shown is outside the rules.</p>
+<kron-demo label="A Commoner's Career" moves="a2-a5 k10-k9 a5-a6 j10-j9 a6-a7 i10-i9 a7-a8 h10-h9 a8-a9 g10-g9 a9-b10 e10-e9 b10-c11">
+  <script type="application/json">{
+    "0": "A sparring board — Ash shuffles politely while one Bone commoner walks his whole road.",
+    "1": "1. a2–a5 — the first-move dash: one, two, or three squares, once in a lifetime.",
+    "5": "3. a6–a7 — after the dash, the long march: one square at a time, never backward.",
+    "9": "5. a8–a9 — into the teeth of the enemy pawn's diagonal. A Bürger may stand in danger; he simply may not flinch.",
+    "11": "6. a9×b10 — the capture: one square diagonally forward, the only way a Bürger ever takes.",
+    "13": "7. b10×c11 — the far rank, and the reward: the commoner becomes a Gesandter — never a Kanzler, never anything else. The court has exactly one ladder, and this is its top."
+  }</script>
+</kron-demo>
+
+<h2><span class="num">III.</span>Die Flucht — the King's One Road</h2>
+<blockquote>“An unmoved Krone may, once per game, leap up to three squares in a straight orthogonal line — provided every square he passes through and lands on is empty and unthreatened.” — §5</blockquote>
+<p>Once, and only once — and any ordinary Krone move forfeits it forever. In the study's simulations <strong>half of all games spent the Flucht</strong>; good players treat the unspent option as a piece in hand, and the Fool's Gate (below) shows what happens to a Krone whose own court blocks the road.</p>
+<kron-demo label="Die Flucht" moves="f2-f5 g10-g7 f1-f4">
+  <script type="application/json">{
+    "0": "The Krone's file must first be opened — his own Bürger clears the road.",
+    "1": "1. f2–f5 — the road opens: f2, f3, f4 now empty ahead of the Krone.",
+    "3": { "note": "2. f1–f4 — Die Flucht: three squares in one stride, every square of the path empty and unthreatened. It is spent now, forever — this Krone will walk like any other for the rest of his reign.", "arrows": ["f1-f4"] }
+  }</script>
+</kron-demo>
+
+<h2><span class="num">IV.</span>Isolation — the Only Way to Win</h2>
+<blockquote>“A Krone is never captured. He is only isolated.” — §1</blockquote>
+<p>No check, no checkmate, no capture of kings. At the start of a player's turn, their Krone is lost if every neighbouring square is shut — by <em>either</em> court's pieces, by the board's edge, by the throne — and the enemy holds at least one genuine claim: a blade on the Krone's own square, or a threat against a genuinely empty door. The figure below is the famous two-move miniature, with the engine's own door-count painted on the board: watch the green doors disappear.</p>
+<kron-demo label="The Fool's Gate, with the Doors Painted" moves="f2-f5 f10-f9 e1-j6">
+  <script type="application/json">{
+    "0": { "note": "The start: the Ash Krone has zero open doors — every neighbour is his own court — and he is perfectly safe. Walls of your own making are only walls. (§6: no enemy touch, no danger.)", "doors": "ash" },
+    "1": "1. f2–f5 — the Throne Road.",
+    "2": { "note": "1… f10–f9?? — now the Krone has exactly one open door: f10, painted green. His Flucht road down the f-file is blocked by his own pawn on f9.", "doors": "ash" },
+    "3": { "note": "2. e1–j6 — the last green door turns red: f10 is a genuinely empty square, claimed by the enemy alone. Every other neighbour: his own court. Isolated — no rescue is possible, because Isolation is judged before his court is given leave to act.", "doors": "ash", "arrows": ["j6-f10"] }
+  }</script>
+</kron-demo>
+<p>For the full anatomy of a slow Isolation — nine moves, not a single capture — see the bloodless miniature in <a href="sim_results.html">the Rules Commission</a>; for why the correct dash survives this same attack, see the Far Door in <a href="sim_openings.html">the Opening Book</a>.</p>
+
+<footer>
+  <p>“A king who cannot move has already lost his throne in every way that matters; Kronspiel merely insists the board admit it.”</p>
+  <p class="attribution">Figures replayed through the game's own engine · companion to <a href="sim_results.html">the Rules Commission</a> and <a href="sim_openings.html">the Opening Book</a> · <a href="index.html">play Kronspiel</a></p>
+</footer>
+
+</div>
+</body>
+</html>

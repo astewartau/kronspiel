@@ -184,7 +184,8 @@
     "3": "2. b1–b4 — the Marschall commits, early and loudly. Central safety traded for tempo, exactly as advertised.",
     "5": "3. b4–f4 — the soldier plants his standard before the throne. This is the Gambit's entire argument.",
     "9": "5. g1–i3 — out of book, a Kanzler joins the charge.",
-    "13": "7. i7×f10 — the counsellor lands at the palace door, and the Ash Krone, every neighbour shut, is isolated. Blunt worked — this time. Against a patient defender, §8's warning collects its debt."
+    "13": { "note": "7. i7×f10 — the counsellor lands at the palace door, and the Ash Krone, every neighbour shut, is isolated. Blunt worked — this time. Against a patient defender, §8's warning collects its debt.",
+            "doors": "ash" }
   }</script>
 </kron-demo>
 
@@ -231,7 +232,8 @@
   <kron-demo label="The Throne Road · the Far Door" moves="f2-f5 f10-f7 g1-e3 f11-f9 e1-g3 d10-d7 f1-f4 e10-e7 f4-f3 e11-e8 e3-h6 g10-g7 b2-b5 e8-a8">
     <script type="application/json">{
       "0": "The modern main line, from a live game of the study. (Bone isolated Ash in 28 moves.)",
-      "1": "1. f2–f5 — the commoner's march: three squares to the foot of the empty throne, and f2 — the one square both Kanzler see through — stands open behind him.",
+      "1": { "note": "1. f2–f5 — the commoner's march: three squares to the foot of the empty throne, and f2 — the one square both Kanzler see through — stands open behind him.",
+             "arrows": ["e1-j6", "g1-b6"] },
       "2": "1… f10–f7 — the Far Door: Ash claims the other side of the Aschenstuhl. Two commoners now stare at each other across the empty chair.",
       "3": "2. g1–e3 — the first counsellor steps to the window…",
       "5": "3. e1–g3 — …then the second. Both Kanzler developed by move three; no other first move allows it.",
@@ -248,8 +250,10 @@
   <script type="application/json">{
     "0": "Why the Far Door lives where the half-step dies — the same crossing Kanzler, demonstrated.",
     "1": "1. f2–f5 — the Road.",
-    "2": "1… f10–f7 — the full dash. Note what it leaves behind: f9 and f8, empty. That emptiness is the entire defence.",
-    "3": "2. e1–j6 — the Fool's Gate look, thrown at the correct dash. f10 is threatened and the touch is real — but the unspent Flucht sees two open doors at f9 and f8, and nothing happens. The trap needs the half-step to work."
+    "2": { "note": "1… f10–f7 — the full dash. Note what it leaves behind: f9 and f8, empty. That emptiness is the entire defence.",
+           "marks": ["f9", "f8"] },
+    "3": { "note": "2. e1–j6 — the Fool's Gate look, thrown at the correct dash. f10 is threatened and the touch is real — but the unspent Flucht sees two open doors at f9 and f8, and nothing happens. The trap needs the half-step to work.",
+           "doors": "ash", "arrows": ["j6-f10"] }
   }</script>
 </kron-demo>
 
@@ -283,9 +287,12 @@
   <kron-demo label="The Fool's Gate" moves="f2-f5 f10-f9 e1-j6">
     <script type="application/json">{
       "0": "The shortest possible game of Kronspiel — verified as forced by the engine.",
-      "1": "1. f2–f5 — the Throne Road, opening both Kanzler diagonals through f2.",
-      "2": "1… f10–f9?? — one step, not three. It looks careful. It stands on the Krone's own Flucht road — f9 was his escape square.",
-      "3": "2. e1–j6 — the Kanzler crosses the whole board and looks once at f10: the only empty door, now an enemy's. Every other neighbour is the Krone's own court. Isolated, move two. (2. g1–b6 mirrors it.)"
+      "1": { "note": "1. f2–f5 — the Throne Road, opening both Kanzler diagonals through f2.",
+             "arrows": ["e1-j6", "g1-b6"] },
+      "2": { "note": "1… f10–f9?? — one step, not three. It looks careful. It stands on the Krone's own Flucht road — f9 was his escape square.",
+             "marks": ["f9"] },
+      "3": { "note": "2. e1–j6 — the Kanzler crosses the whole board and looks once at f10: the only empty door, now an enemy's. Every other neighbour is the Krone's own court. Isolated, move two. (2. g1–b6 mirrors it.)",
+             "doors": "ash", "arrows": ["j6-f10"] }
     }</script>
   </kron-demo>
 </div>

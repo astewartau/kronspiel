@@ -9,17 +9,21 @@
 //   <script type="module" src="js/demo.js"></script>
 //   <kron-demo moves="f2-f5 f10-f7 g1-e3" label="The Throne Road">
 //     <script type="application/json">
-//       { "0": "Note shown before any move.",
-//         "2": "Note shown once ply 2 has been played." }
+//       { "0": "Plain note shown before any move.",
+//         "2": { "note": "Rich step: overlays too.",
+//                "doors": "ash",              // paint the Ash Krone's doors
+//                "arrows": ["j6-f10"],        // gold sightline arrows
+//                "marks": ["f9", "f8"] } }    // gold square marks
 //     </script>
 //   </kron-demo>
 //
 // Attributes: moves (space-separated from-to), label (optional heading),
-// flip (optional; view from Ash's side). Notes are keyed by ply count.
+// flip (optional; view from Ash's side). Annotations are keyed by ply count.
+// Notes are sticky between keys; doors/arrows/marks apply only at their step.
 
 import {
-  N, ASCH, EMPTY, KRONE, idx, rowOf, colOf,
-  initialState, genLegal, apply, sqName,
+  N, ASCH, EMPTY, idx, rowOf, colOf,
+  initialState, genLegal, apply, isolationInfo, sqName, BONE, ASH,
 } from './engine.js';
 import { pieceHTML } from './pieces.js';
 
@@ -47,8 +51,8 @@ const CSS = `
     text-align: center;
     margin: 2px 0 8px;
   }
+  .boardwrap { position: relative; }
   .board {
-    position: relative;
     display: grid;
     grid-template-columns: repeat(11, 1fr);
     grid-template-rows: repeat(11, 1fr);
@@ -73,7 +77,19 @@ const CSS = `
   }
   .sq.from { box-shadow: inset 0 0 0 100vmax rgba(200,162,74,0.22); }
   .sq.to   { box-shadow: inset 0 0 0 2px var(--gold, #c8a24a), inset 0 0 12px rgba(200,162,74,0.35); }
-  .piece { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  /* door overlays — the game's own visual language */
+  .sq.door-open  { box-shadow: inset 0 0 0 2.5px rgba(111,158,95,0.9), inset 0 0 12px rgba(111,158,95,0.35); }
+  .sq.door-enemy { box-shadow: inset 0 0 0 2.5px rgba(208,106,74,0.9), inset 0 0 12px rgba(184,68,47,0.4); }
+  .sq.door-own   { box-shadow: inset 0 0 0 2.5px rgba(154,143,124,0.65); }
+  .sq.door-krone { box-shadow: inset 0 0 0 2.5px rgba(232,201,106,0.95), inset 0 0 14px rgba(200,162,74,0.45); }
+  .sq.mark       { box-shadow: inset 0 0 0 2px rgba(232,201,106,0.85), inset 0 0 10px rgba(200,162,74,0.3); }
+  .piece { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; }
+  .piece.slide { transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.35, 1); }
+  .piece.just-moved svg.sigil { animation: landed 0.45s ease; }
+  @keyframes landed {
+    0%   { filter: drop-shadow(0 0 8px rgba(232,201,106,0.9)) drop-shadow(0 1px 2px rgba(0,0,0,0.55)); }
+    100% { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55)); }
+  }
   .piece svg.sigil {
     width: 82%; height: 82%;
     stroke-linejoin: round; stroke-width: 3;
@@ -83,15 +99,19 @@ const CSS = `
   .piece.bone svg.sigil .accent { fill: #453b2c; stroke: none; }
   .piece.ash svg.sigil { fill: #211c17; stroke: rgba(243,236,220,0.6); }
   .piece.ash svg.sigil .accent { fill: #cbbfa8; stroke: none; }
+  svg.overlay {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 3;
+  }
+  svg.overlay line { stroke: rgba(232,201,106,0.85); stroke-width: 1.1; }
+  svg.overlay polygon { fill: rgba(232,201,106,0.85); }
+  svg.overlay .halo line { stroke: rgba(200,162,74,0.3); stroke-width: 2.6; }
   .files {
     display: flex; justify-content: space-around;
     font-family: "Cinzel", serif; font-size: 9.5px; color: #7d7057;
     margin-top: 3px; letter-spacing: 0.05em;
   }
-  .controls {
-    display: flex; align-items: center; gap: 6px;
-    margin-top: 9px;
-  }
+  .controls { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
   button {
     font-family: "Cinzel", serif;
     font-size: 13px;
@@ -114,6 +134,22 @@ const CSS = `
     color: var(--gold-bright, #e8c96a);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .legend {
+    display: none;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 7px;
+    font-size: 12.5px;
+    color: var(--ink-dim, #9a8f7c);
+  }
+  .legend.show { display: flex; }
+  .legend i {
+    display: inline-block; width: 10px; height: 10px;
+    border-radius: 2px; margin-right: 5px; vertical-align: -1px;
+  }
+  .legend .open  { box-shadow: inset 0 0 0 2px rgba(111,158,95,0.9); }
+  .legend .enemy { box-shadow: inset 0 0 0 2px rgba(208,106,74,0.9); }
+  .legend .own   { box-shadow: inset 0 0 0 2px rgba(154,143,124,0.75); }
   .note {
     min-height: 3.2em;
     margin-top: 7px;
@@ -123,6 +159,10 @@ const CSS = `
     color: var(--ink-dim, #9a8f7c);
     text-align: center;
   }
+  @media (prefers-reduced-motion: reduce) {
+    .piece.slide { transition: none; }
+    .piece.just-moved svg.sigil { animation: none; }
+  }
 `;
 
 class KronDemo extends HTMLElement {
@@ -131,9 +171,16 @@ class KronDemo extends HTMLElement {
     const root = this.attachShadow({ mode: 'open' });
 
     this.flip = this.hasAttribute('flip');
-    this.notes = {};
+    this.anno = {};
     const notesEl = this.querySelector('script[type="application/json"]');
-    if (notesEl) { try { this.notes = JSON.parse(notesEl.textContent); } catch { /* ignore bad notes */ } }
+    if (notesEl) {
+      try {
+        const raw = JSON.parse(notesEl.textContent);
+        for (const [k, v] of Object.entries(raw)) {
+          this.anno[k] = typeof v === 'string' ? { note: v } : v;
+        }
+      } catch { /* ignore bad notes */ }
+    }
 
     // Replay the move list through the engine, keeping every state.
     this.states = [initialState()];
@@ -158,7 +205,10 @@ class KronDemo extends HTMLElement {
     const label = this.getAttribute('label');
     frame.innerHTML = `
       ${label ? `<div class="label">${label}</div>` : ''}
-      <div class="board"></div>
+      <div class="boardwrap">
+        <div class="board"></div>
+        <svg class="overlay" viewBox="0 0 110 110" preserveAspectRatio="none"></svg>
+      </div>
       <div class="files">${(this.flip ? 'kjihgfedcba' : 'abcdefghijk').split('').map((f) => `<span>${f}</span>`).join('')}</div>
       <div class="controls">
         <button data-go="0" aria-label="Start" title="Start">«</button>
@@ -167,11 +217,18 @@ class KronDemo extends HTMLElement {
         <button data-go="+1" aria-label="Forward" title="Forward">›</button>
         <button data-go="end" aria-label="End" title="End">»</button>
       </div>
+      <div class="legend">
+        <span><i class="open"></i>open door</span>
+        <span><i class="enemy"></i>shut by the enemy</span>
+        <span><i class="own"></i>shut by his own</span>
+      </div>
       <div class="note"></div>`;
     root.appendChild(frame);
 
     this.boardEl = frame.querySelector('.board');
+    this.overlayEl = frame.querySelector('svg.overlay');
     this.readoutEl = frame.querySelector('.readout');
+    this.legendEl = frame.querySelector('.legend');
     this.noteEl = frame.querySelector('.note');
     this.buttons = [...frame.querySelectorAll('button')];
 
@@ -202,19 +259,53 @@ class KronDemo extends HTMLElement {
       if (e.key === 'ArrowLeft') { this.goto(this.k - 1); e.preventDefault(); }
     });
 
+    this.k = 0;
     this.goto(0);
   }
 
+  // display row/col of a board square
+  disp(sq) {
+    const r = rowOf(sq), c = colOf(sq);
+    return { dr: this.flip ? r : N - 1 - r, dc: this.flip ? N - 1 - c : c };
+  }
+
+  sqOf(name) {
+    const m = name.match(/^([a-k])(\d+)$/);
+    return m ? idx(+m[2] - 1, 'abcdefghijk'.indexOf(m[1])) : -1;
+  }
+
   goto(k) {
+    const prev = this.k;
     this.k = Math.max(0, Math.min(this.played.length, k));
     const state = this.states[this.k];
     const last = this.k > 0 ? this.played[this.k - 1] : null;
+    const anno = this.anno[this.k] || {};
+
+    // door overlay for the named side, computed by the real engine
+    const doors = { krone: -1, open: new Set(), enemy: new Set(), own: new Set() };
+    if (anno.doors) {
+      const side = anno.doors === 'bone' ? BONE : ASH;
+      const info = isolationInfo(state.board, side, state.flucht[side], true);
+      doors.krone = info.kSq;
+      for (const s of info.open) doors.open.add(s);
+      for (const c of info.closed) {
+        if (c.occ === 'enemy' || c.threat) doors.enemy.add(c.sq);
+        else doors.own.add(c.sq);
+      }
+    }
+    const marks = new Set((anno.marks || []).map((n) => this.sqOf(n)));
 
     for (const el of this.sqEls) {
-      el.classList.remove('from', 'to');
+      el.classList.remove('from', 'to', 'door-open', 'door-enemy', 'door-own', 'door-krone', 'mark');
       const sq = +el.dataset.sq;
       if (last && sq === last.from) el.classList.add('from');
       if (last && sq === last.to) el.classList.add('to');
+      if (sq === doors.krone) el.classList.add('door-krone');
+      else if (doors.open.has(sq)) el.classList.add('door-open');
+      else if (doors.enemy.has(sq)) el.classList.add('door-enemy');
+      else if (doors.own.has(sq)) el.classList.add('door-own');
+      if (marks.has(sq)) el.classList.add('mark');
+
       const p = state.board[sq];
       let piece = el.querySelector('.piece');
       if (p === EMPTY) { piece?.remove(); continue; }
@@ -224,6 +315,40 @@ class KronDemo extends HTMLElement {
       }
       piece.className = 'piece ' + (p > 0 ? 'bone' : 'ash');
       piece.innerHTML = pieceHTML('sigils', Math.abs(p));
+    }
+
+    // slide + glow the mover when stepping forward one ply
+    if (last && this.k === prev + 1) {
+      const destEl = this.sqEls.find((el) => +el.dataset.sq === last.to)?.querySelector('.piece');
+      if (destEl) {
+        const a = this.disp(last.from), b = this.disp(last.to);
+        destEl.style.transform = `translate(${(a.dc - b.dc) * 100}%, ${(a.dr - b.dr) * 100}%)`;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          destEl.classList.add('slide', 'just-moved');
+          destEl.style.transform = '';
+        }));
+        setTimeout(() => destEl.classList.remove('slide', 'just-moved'), 500);
+      }
+    }
+
+    // sightline arrows
+    this.overlayEl.innerHTML = '';
+    for (const a of anno.arrows || []) {
+      const [f, t] = a.split('-').map((n) => this.sqOf(n));
+      if (f < 0 || t < 0) continue;
+      const A = this.disp(f), B = this.disp(t);
+      const ax = A.dc * 10 + 5, ay = A.dr * 10 + 5;
+      let bx = B.dc * 10 + 5, by = B.dr * 10 + 5;
+      const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len;
+      bx -= ux * 3.4; by -= uy * 3.4; // stop short of the target piece
+      const head = 2.4;
+      const hx = bx - ux * head, hy = by - uy * head;
+      const px = -uy * head * 0.6, py = ux * head * 0.6;
+      this.overlayEl.innerHTML += `
+        <g class="halo"><line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"/></g>
+        <line x1="${ax}" y1="${ay}" x2="${hx}" y2="${hy}"/>
+        <polygon points="${bx},${by} ${hx + px},${hy + py} ${hx - px},${hy - py}"/>`;
     }
 
     if (!last) {
@@ -237,10 +362,12 @@ class KronDemo extends HTMLElement {
     this.buttons[0].disabled = this.buttons[1].disabled = this.k === 0;
     this.buttons[2].disabled = this.buttons[3].disabled = this.k === this.played.length;
 
+    this.legendEl.classList.toggle('show', !!anno.doors);
+
     // show the note for the highest annotated ply at or below k
     let note = '';
     for (let i = this.k; i >= 0; i--) {
-      if (this.notes[i] != null) { note = this.notes[i]; break; }
+      if (this.anno[i]?.note != null) { note = this.anno[i].note; break; }
     }
     this.noteEl.textContent = note;
   }
