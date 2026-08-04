@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>♚</text></svg>">
+<script type="module" src="js/demo.js"></script>
 <style>
   :root {
     --bg: #0f0d0b; --bg-2: #16130f; --panel: #1c1813; --panel-edge: #2e2820;
@@ -122,7 +123,7 @@
 </div>
 
 <h2><span class="num">IV.</span>The Five Named Openings, on Trial</h2>
-<p>Bone plays each line by the book against a free opponent; the free-play control is 48%. “Eval after book” is the Oracle's material-and-position judgment once the last scripted move is played.</p>
+<p>Bone plays each line by the book against a free opponent; the free-play control is 48%. “Eval after book” is the Oracle's material-and-position judgment once the last scripted move is played. Each opening below carries a steppable diagram taken from a live game of the study — use <span class="mono">‹ ›</span> (or the arrow keys) to walk the line.</p>
 
 <div class="table-scroll">
 <table>
@@ -148,18 +149,72 @@
 
 <h3>The Ashen Approach <span class="verdict-tag tag-sound">Sound</span></h3>
 <p>Dead level after the book (+9) and dead level in results. The lore says it “wins more often than courtiers like to admit,” and the engine agrees it concedes nothing at all — the only named opening that finishes its script at material and positional par. Tedious to watch, impossible to punish. The Ecclesia would be pleased.</p>
+<kron-demo label="The Ashen Approach" moves="f2-f3 e10-e9 e2-e3 d11-k4 g2-g3 g10-g7 e1-e2 k10-k9 g1-g2 i11-j9 g2-k6 e11-d11 f1-g2 k4-e10">
+  <script type="application/json">{
+    "0": "A live game, and a parable: watch what the Approach does to an impatient raider. (Bone won in 9 moves.)",
+    "1": "1. f2–f3 — one square. The Approach concedes nothing, including tempo it doesn't need.",
+    "4": "Ash's Prälat sorties all the way to k4 — exactly the overextension this opening is content to sit and watch.",
+    "7": "4. e1–e2 — a counsellor advances a single square. Patience, weaponised.",
+    "9": "5. g1–g2 — the book complete: nothing risked, nothing owed, and a raider stranded far from home.",
+    "11": "The waiting ends — the Kanzler takes the long diagonal the raider left open behind him.",
+    "13": "The Krone tidies quietly into his counsel's vacated post. Ash's scattered court was isolated two moves later."
+  }</script>
+</kron-demo>
 
 <h3>The Closed Gate <span class="verdict-tag tag-sound">Sound</span></h3>
 <p>The orthodox choice performs exactly as orthodoxy should: slightly passive by the Oracle's count (−87, the cost of spending five tempi on fortification), but the best win rate of the five in practice. A fine default, and a safe thing for a character to play when they wish to reveal nothing — which is, of course, its stated purpose.</p>
+<kron-demo label="The Closed Gate" moves="g2-g3 f10-f8 e2-e3 e11-i7 c1-e2 d10-d8 i1-g2 e10-e7 f2-f3 j10-j7 e2-f4 i7-j8 g2-i3 j11-j9">
+  <script type="application/json">{
+    "0": "From a live engine game — Bone isolated Ash in 21 moves.",
+    "1": "1. g2–g3 — the first gate: a modest step, revealing nothing.",
+    "3": "2. e2–e3 — the second. No line opens; the court keeps its counsel.",
+    "5": "3. c1–e2 — the first Gesandter takes the post the pawn vacated.",
+    "7": "4. i1–g2 — its twin mirrors it. Four moves, and Bone has committed to nothing at all.",
+    "9": "5. f2–f3 — the book complete: a wall of pawns, both leapers posted, every window still shut.",
+    "11": "Out of book, the fortress unfolds — the Gesandter vaults to a centre it never had to fight for."
+  }</script>
+</kron-demo>
 
 <h3>The Sigismund Gambit <span class="verdict-tag tag-lore">True to its lore</span></h3>
 <p>Down nearly two Bürger of value by the end of its own script, winning a third of its games. The rulebook calls it “blunt, costly, and prone to failure against anyone patient enough to let it exhaust itself” — the engine's numbers are that sentence, translated. This is not a flaw in the design; it is characterisation. A soldier's opening should lose to a spymaster.</p>
+<kron-demo label="The Sigismund Gambit" moves="b2-b5 e10-e8 b1-b4 i10-i8 b4-f4 d11-h7 h2-h4 g10-g8 g1-i3 h11-j9 i3-i7 f10-f8 i7-f10">
+  <script type="application/json">{
+    "0": "An entire miniature — the Gambit at full gallop, seven moves, from a live game.",
+    "1": "1. b2–b5 — the Bürger's triple-dash clears the Marschall's road in a single stroke.",
+    "3": "2. b1–b4 — the Marschall commits, early and loudly. Central safety traded for tempo, exactly as advertised.",
+    "5": "3. b4–f4 — the soldier plants his standard before the throne. This is the Gambit's entire argument.",
+    "9": "5. g1–i3 — out of book, a Kanzler joins the charge.",
+    "13": "7. i7×f10 — the counsellor lands at the palace door, and the Ash Krone, every neighbour shut, is isolated. Blunt worked — this time. Against a patient defender, §8's warning collects its debt."
+  }</script>
+</kron-demo>
 
 <h3>The Drowned Flank <span class="verdict-tag tag-cost">Costly — needs a believer</span></h3>
 <p>The worst tested result (25%), and the most instructive failure. The Drowned Flank is a <em>feint</em>, and a feint's value lives entirely in the opponent's belief. An engine does not believe anything; it counts. Against a calculator the wing demonstration is simply five tempi and a loose Marschall. At a human table, against a player who commits their defence to the wrong wing, none of this arithmetic applies — which is precisely why “people who have lost to it” resent it. Keep the lore; just know the trick has a floor.</p>
+<kron-demo label="The Drowned Flank" moves="j2-j4 g10-g8 i1-j3 j11-k11 i2-i3 i10-i9 b2-b4 h10-h9 b1-b3 h11-a4 e2-e5 j10-j7 g2-g3 f11-g10">
+  <script type="application/json">{
+    "0": "The bargeman's trick, live: count which wing the pieces face, then count where the game is won. (Bone in 15.)",
+    "1": "1. j2–j4 — the demonstration opens in the east.",
+    "3": "2. i1–j3 — the Gesandter makes the eastern story convincing…",
+    "5": "3. i2–i3 — …three moves of theatre now.",
+    "7": "4. b2–b4 — and the true weight lands in the west.",
+    "9": "5. b1–b3 — book complete: the western Marschall rises behind a feint the defender has already answered.",
+    "11": "Out of book, the centre breaks open — the feint's real dividend was never on either wing."
+  }</script>
+</kron-demo>
 
 <h3>The Beggar's Gate <span class="verdict-tag tag-cost">A true gambit</span></h3>
 <p>Genuinely a sacrifice (−250 after book), and the only line the opponent can physically interrupt — in most games the script broke by move 3, the free defender declining to cooperate with the pawn offers. It wins a third of its games anyway, and its games run long: the compensation is real but slow, exactly as §8 describes — the pattern pays off only “by the time it is recognised.” Unsound against precise defence, dangerous against everyone else. That is what a beggar's weapon should be.</p>
+<kron-demo label="The Beggar's Gate" moves="a2-a4 f10-f8 k2-k4 e11-j6 a4-a5 i11-h9 k4-k5 j6-k6 h2-h3 k6-g6 e2-e5 g6-j9 f2-f3 e10-e8">
+  <script type="application/json">{
+    "0": "Pawns offered at the world's edges, “seemingly at random.” In this live game Ash declines the gift — and loses anyway. (Bone in 27.)",
+    "1": "1. a2–a4 — the first alm, offered in the west.",
+    "3": "2. k2–k4 — the second, in the east. Ash's Kanzler comes hunting at once.",
+    "5": "3. a4–a5 — pressed further. Taking it would open the western Wing diagonal two moves early…",
+    "7": "4. k4–k5 — …the same bargain in the east. The beggar insists.",
+    "10": "Ash's Kanzler prowls the offered wing but never commits the capture — a gift refused is still a gift: every move spent circling it is a move not spent at court.",
+    "13": "Bone, both edges pressed and nothing actually lost, quietly opens the centre it was paid to open."
+  }</script>
+</kron-demo>
 
 <h2><span class="num">V.</span>The Discoveries</h2>
 
@@ -172,7 +227,19 @@
     <li><strong>f2 is the one square whose vacancy opens a diagonal for both Kanzler at once.</strong> The Oracle's preferred follow-up is immediate: a Kanzler out through the window to e3 or g3. One commoner's march, and both counsellors see daylight.</li>
     <li>It concedes nothing: the pawn on f5 is hard to profitably attack, and the Aschenstuhl shields the file beyond it.</li>
   </ol>
-  <p style="margin-bottom:0">Two warnings from the same analysis: taking the side-step at once (f5–e6 before developing) rates poorly — the Road is a development plan, not a pawn raid — and deep Kanzler sorties into enemy territory score <em>negative</em>. The window is for looking through, not leaping through.</p>
+  <p>Two warnings from the same analysis: taking the side-step at once (f5–e6 before developing) rates poorly — the Road is a development plan, not a pawn raid — and deep Kanzler sorties into enemy territory score <em>negative</em>. The window is for looking through, not leaping through.</p>
+  <kron-demo label="The Throne Road · the Far Door" moves="f2-f5 f10-f7 g1-e3 f11-f9 e1-g3 d10-d7 f1-f4 e10-e7 f4-f3 e11-e8 e3-h6 g10-g7 b2-b5 e8-a8">
+    <script type="application/json">{
+      "0": "The modern main line, from a live game of the study. (Bone isolated Ash in 28 moves.)",
+      "1": "1. f2–f5 — the commoner's march: three squares to the foot of the empty throne, and f2 — the one square both Kanzler see through — stands open behind him.",
+      "2": "1… f10–f7 — the Far Door: Ash claims the other side of the Aschenstuhl. Two commoners now stare at each other across the empty chair.",
+      "3": "2. g1–e3 — the first counsellor steps to the window…",
+      "5": "3. e1–g3 — …then the second. Both Kanzler developed by move three; no other first move allows it.",
+      "7": "4. f1–f4 — Die Flucht, spent not in flight but in procession: the Krone takes the Road behind his commoner. Half of all games spend the Flucht — rarely this grandly.",
+      "11": "6. e3–h6 — the window is for looking through, not leaping through: one measured step, never a sortie.",
+      "14": "Ash's court is already stretched thin across its own back rank; the siege that followed was built from these first seven moves."
+    }</script>
+  </kron-demo>
 </div>
 
 <h3>The Far Door — the universal reply f10–f7</h3>
@@ -204,6 +271,11 @@ node sim/openings.mjs free 24 12000 -a             # free-play control
 node sim/openings.mjs first f2-f5 20 13000         # forced first move
 node sim/openings.mjs line name "f2-f5,e1-g3" 20   # any scripted line</code></pre>
 <p>Every game is seeded and reproducible; movelists are recorded in full in <code>sim/out/op-*.jsonl</code>.</p>
+<p>The steppable diagrams on this page are <code>&lt;kron-demo&gt;</code> elements — a small reusable framework in <code>js/demo.js</code>. Give it a move list and optional per-ply notes, and it replays the line through the game's real engine (captures, dashes, side-steps, Die Flucht and promotion all behave exactly as at the table), rendered with the Court Sigils. It works in any page on this site:</p>
+<pre><code>&lt;script type="module" src="js/demo.js"&gt;&lt;/script&gt;
+&lt;kron-demo label="The Throne Road" moves="f2-f5 f10-f7 g1-e3"&gt;
+  &lt;script type="application/json"&gt;{ "1": "The commoner's march." }&lt;/script&gt;
+&lt;/kron-demo&gt;</code></pre>
 
 <footer>
   <p>“Even a common man finds his way around an empty chair, when the alternative is standing before it forever.”</p>
