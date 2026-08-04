@@ -1,11 +1,11 @@
 // Engine rule tests — run with: node test/engine.test.mjs
 import {
   N, ASCH, EMPTY, KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER,
-  BONE, ASH, idx,
+  BONE, ASH, idx, colOf,
   initialState, genPseudo, genLegal, apply, attacked, isolationInfo,
-  turnStartResult, claimableDraws, positionKey, serialize, deserialize,
+  turnStartResult, claimableDraws, positionKey, serialize, deserialize, notateBody,
 } from '../js/engine.js';
-import { findBestMove } from '../js/ai.js';
+import { findBestMove, OPENINGS } from '../js/ai.js';
 
 let passed = 0, failed = 0;
 function ok(cond, name) {
@@ -62,7 +62,16 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
 {
   const s = initialState();
   const pm = genPseudo(s.board, BONE, true).filter(m => Math.abs(s.board[m.from]) === BURGER);
-  ok(pm.filter(m => m.double).length === 11, 'all 11 Bürger have a double step');
+  ok(pm.filter(m => m.dash === 2).length === 11, 'all 11 Bürger have a two-square first move');
+  ok(pm.filter(m => m.dash === 3).length === 11, 'all 11 Bürger have a three-square first move');
+  // a blocked path cuts the first-move advance short
+  const bb = emptyBoard();
+  bb[idx(1, 2)] = BURGER * BONE;   // c2, unmoved
+  bb[idx(4, 2)] = BURGER * ASH;    // c5 blocks the three-step only
+  bb[idx(0, 5)] = KRONE * BONE;
+  bb[idx(10, 5)] = KRONE * ASH;
+  const bm = genPseudo(bb, BONE, false).filter(m => m.from === idx(1, 2));
+  ok(bm.some(m => m.dash === 2) && !bm.some(m => m.dash === 3), 'first-move advance stops at an occupied square');
   // promotion: only to Gesandter
   const b = emptyBoard();
   b[idx(9, 0)] = BURGER * BONE;
@@ -73,6 +82,33 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
   const st = state(b);
   const after = apply(st, promos[0]);
   ok(after.board[idx(10, 0)] === GESANDTER * BONE, 'Bürger promotes only to Gesandter');
+
+  // §2: a Bürger whose file runs into the Aschenstuhl steps around it
+  const ba = emptyBoard();
+  ba[idx(4, 5)] = BURGER * BONE;   // f5 — forward square is the throne
+  ba[idx(6, 5)] = BURGER * ASH;    // f7 — likewise, from the other side
+  ba[idx(0, 0)] = KRONE * BONE;
+  ba[idx(10, 10)] = KRONE * ASH;
+  const f5 = genPseudo(ba, BONE, false).filter(m => m.from === idx(4, 5));
+  ok(f5.some(m => m.to === idx(5, 4)) && f5.some(m => m.to === idx(5, 6)),
+    'f5 Bürger may step diagonally to e6/g6 without a capture');
+  ok(!f5.some(m => m.to === ASCH), 'the throne itself stays forbidden');
+  const f7 = genPseudo(ba, ASH, false).filter(m => m.from === idx(6, 5));
+  ok(f7.some(m => m.to === idx(5, 4)) && f7.some(m => m.to === idx(5, 6)),
+    'f7 Bürger may step diagonally to e6/g6 without a capture');
+  // ...but only there: an ordinary Bürger has no free diagonal step
+  const bo = emptyBoard();
+  bo[idx(4, 4)] = BURGER * BONE;   // e5
+  bo[idx(0, 0)] = KRONE * BONE;
+  bo[idx(10, 10)] = KRONE * ASH;
+  const e5 = genPseudo(bo, BONE, false).filter(m => m.from === idx(4, 4));
+  ok(e5.length === 1 && e5[0].to === idx(5, 4), 'no free diagonal step away from the throne');
+  // an own piece on the side-step square blocks it
+  const bc = new Int8Array(ba);
+  bc[idx(5, 4)] = MARSCHALL * BONE; // own piece on e6
+  const f5b = genPseudo(bc, BONE, false).filter(m => m.from === idx(4, 5));
+  ok(!f5b.some(m => m.to === idx(5, 4)) && f5b.some(m => m.to === idx(5, 6)),
+    'side-step around the throne only onto an empty or enemy square');
 }
 
 // --- Die Flucht ---------------------------------------------------------
@@ -141,11 +177,18 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
   const info2 = isolationInfo(b2, BONE, false, true);
   ok(!info2.isolated && !info2.enemyTouch, 'a Krone is never undone by his own house alone');
 
-  // enemy threat on an OWN-occupied square counts for condition 2
+  // enemy threat on an OWN-occupied square is only an idle gesture (§6)
   const b3 = new Int8Array(b2);
-  b3[idx(3, 1)] = MARSCHALL * ASH; // b4: controls b2 (own pawn there) and b1(blocked by b2 pawn)
+  b3[idx(3, 1)] = MARSCHALL * ASH; // b4: controls b2 (own pawn there) and b1 (blocked past b2)
   const info3 = isolationInfo(b3, BONE, false, true);
-  ok(info3.isolated, 'siege of an own-occupied square completes Isolation');
+  ok(!info3.isolated && !info3.enemyTouch, 'a threat against an own-filled square completes nothing');
+
+  // ...but a blade at the Krone's own throat does: fully self-walled, and an
+  // enemy Gesandter leaps the wall to threaten a1 itself
+  const b3g = new Int8Array(b2);
+  b3g[idx(2, 1)] = GESANDTER * ASH; // b3: threatens a1 directly
+  const info3g = isolationInfo(b3g, BONE, false, true);
+  ok(info3g.isolated && info3g.enemyTouch, 'direct threat on the Krone’s own square completes Isolation');
 
   // Flucht as the last escape: a1 Krone, own pawns a2/b2, enemy Prälat on d3
   // threatening b1. Without Flucht: every neighbour closed, enemy touch on b1
@@ -172,21 +215,36 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
 
 // --- no self-isolation ---------------------------------------------------
 {
-  // Bone Krone a1; own rook at b2; own pawn a2. Moving the rook to b1 would
-  // complete his own wall while an enemy threatens... construct:
+  // Bone Krone a1 with a blade already at his throat (Ash Gesandter on c2
+  // threatens a1); b1 is his last open square. Moving the own rook onto b1
+  // would seal the wall and isolate him — that move must be illegal.
   const b = emptyBoard();
   b[idx(0, 0)] = KRONE * BONE;     // a1
   b[idx(1, 0)] = BURGER * BONE;    // a2
   b[idx(1, 1)] = BURGER * BONE;    // b2
-  b[idx(5, 1)] = MARSCHALL * BONE; // b6 — can move to b1
-  b[idx(3, 0)] = MARSCHALL * ASH;  // a4 threatens a3->a2(occupied) — touches a2 → enemyTouch
+  b[idx(0, 4)] = MARSCHALL * BONE; // e1 — can slide to b1
+  b[idx(1, 2)] = GESANDTER * ASH;  // c2 threatens a1 directly
   b[idx(10, 10)] = KRONE * ASH;
-  // b1 currently open (not attacked: ASH rook on a-file doesn't hit b1)
   const before = isolationInfo(b, BONE, false, true);
   ok(!before.isolated && before.open.includes(idx(0, 1)), 'b1 is the last open square');
+  ok(before.enemyTouch, 'the Krone’s own square is already threatened');
   const legal = genLegal(state(b));
-  ok(!legal.some(m => m.from === idx(5, 1) && m.to === idx(0, 1)), 'may not voluntarily isolate own Krone');
-  ok(legal.some(m => m.from === idx(5, 1)), 'rook still has other moves');
+  ok(!legal.some(m => m.from === idx(0, 4) && m.to === idx(0, 1)), 'may not voluntarily isolate own Krone');
+  ok(legal.some(m => m.from === idx(0, 4)), 'rook still has other moves');
+}
+
+// --- the Krone cannot be taken --------------------------------------------
+{
+  // An Ash Marschall bearing straight down on the Bone Krone: threatening him
+  // is legal; capturing him is not a move at all.
+  const b = emptyBoard();
+  b[idx(0, 5)] = KRONE * BONE;     // f1
+  b[idx(2, 5)] = MARSCHALL * ASH;  // f3: threatens f1 through empty f2
+  b[idx(10, 10)] = KRONE * ASH;
+  ok(attacked(b, idx(0, 5), ASH), 'the Krone may stand threatened');
+  const pm = genPseudo(b, ASH, false);
+  ok(pm.some(m => m.from === idx(2, 5) && m.to === idx(1, 5)), 'the Marschall may advance to f2');
+  ok(!pm.some(m => m.to === idx(0, 5)), 'no move may capture a Krone');
 }
 
 // --- draws ----------------------------------------------------------------
@@ -239,6 +297,38 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
   ok(r && r.type === 'mutual', 'Mutual Ruin is a draw');
 }
 
+// --- notation ---------------------------------------------------------------
+{
+  const s = initialState();
+  const dash = genPseudo(s.board, BONE, true).find(m => m.dash === 3 && colOf(m.from) === 5);
+  ok(notateBody(s, dash) === 'f2»f5', 'dash notation f2»f5');
+  const ba = emptyBoard();
+  ba[idx(4, 5)] = BURGER * BONE;
+  ba[idx(0, 0)] = KRONE * BONE;
+  ba[idx(10, 10)] = KRONE * ASH;
+  const ss = genPseudo(ba, BONE, false).find(m => m.sidestep && m.to === idx(5, 4));
+  ok(notateBody(state(ba), ss) === 'f5↷e6', 'side-step notation f5↷e6');
+}
+
+// --- AI opening plans -------------------------------------------------------
+{
+  ok(OPENINGS.length === 5 && OPENINGS.every(o => o.line.length >= 3), 'five named openings defined');
+  // A sound plan move from the start position is followed
+  const s = initialState();
+  const plan = { from: idx(1, 6), to: idx(2, 6) }; // g2-g3, the Closed Gate's first move
+  const m = findBestMove(s, 'courtier', Math.random, plan);
+  ok(m.from === plan.from && m.to === plan.to, 'AI follows a sound opening plan');
+  // A plan move the board refutes (hanging the Kanzler to a Bürger) is refused
+  const b = emptyBoard();
+  b[idx(0, 5)] = KRONE * BONE;
+  b[idx(10, 5)] = KRONE * ASH;
+  b[idx(3, 3)] = KANZLER * BONE;
+  b[idx(7, 2)] = BURGER * ASH;   // c8 guards d7
+  const bad = { from: idx(3, 3), to: idx(6, 3) }; // Kanzler d4-d7, en prise
+  const m2 = findBestMove(state(b), 'courtier', Math.random, bad);
+  ok(!(m2.from === bad.from && m2.to === bad.to), 'AI abandons a plan the board refutes');
+}
+
 // --- AI -------------------------------------------------------------------
 {
   const s = initialState();
@@ -246,16 +336,15 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
   ok(m && genLegal(s).some(x => x.from === m.from && x.to === m.to), 'AI produces a legal move');
 
   // AI finds a one-move isolation win. Bone Krone a1 fully self-walled
-  // (a2/b2 Bürger, b1 Marschall) but with no enemy touch yet; the Ash
-  // Kanzler on e8 threatens none of those squares, and can win at once
-  // (e.g. e8–e2 touches b2 along the second rank, e8–b5 down the b-file).
+  // (a2/b2 Bürger, b1 Marschall) with no enemy touch yet; the Ash Gesandter
+  // on d4 can leap to c2 or b3, either of which lays a blade at a1 itself.
   // Spymaster has zero jitter, so only the immediate wins tie for best.
   const b = emptyBoard();
   b[idx(0, 0)] = KRONE * BONE;     // a1
   b[idx(1, 0)] = BURGER * BONE;    // a2 own
   b[idx(1, 1)] = BURGER * BONE;    // b2 own
   b[idx(0, 1)] = MARSCHALL * BONE; // b1 own
-  b[idx(7, 4)] = KANZLER * ASH;    // e8
+  b[idx(3, 3)] = GESANDTER * ASH;  // d4
   b[idx(10, 10)] = KRONE * ASH;
   const st2 = state(b, ASH, { [BONE]: false, [ASH]: false });
   ok(!isolationInfo(st2.board, BONE, false).isolated, 'test position: Bone not yet isolated');

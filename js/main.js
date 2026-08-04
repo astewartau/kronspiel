@@ -2,12 +2,14 @@
 
 import {
   N, ASCH, EMPTY, KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER, BONE, ASH,
-  idx, rowOf, colOf,
-  initialState, genLegal, apply, turnStartResult, claimableDraws,
-  isolationInfo, notateBody, serialize, deserialize,
+  idx, rowOf, colOf, sqName, GLYPHS,
+  initialState, genPseudo, genLegal, apply, make, attacked, turnStartResult,
+  claimableDraws, isolationInfo, notateBody, serialize, deserialize,
 } from './engine.js';
-import { findBestMove, quickEval } from './ai.js';
+import { findBestMove, quickEval, OPENINGS } from './ai.js';
 import { PIECE_SETS, pieceHTML } from './pieces.js';
+import { Net, makeCode, normalizeCode } from './net.js';
+import { LESSONS, buildTutState, sqOf } from './tutorial.js';
 
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'kronspiel-save-v1';
@@ -30,9 +32,20 @@ let lastMove = null;    // {from, to}
 let aiThinking = false;
 let parleyPending = false;
 
+// Online play
+let net = null;          // Net instance while an online session is live
+let oppHere = false;     // the other court is connected
+let hostRetries = 0;     // room-code collision retries
+
+let noticeText = null;   // transient substatus line: illegal-move hints, opening announcements
+let tut = null;          // { step } while the Primer is running
+let aiOpening = null;    // the Court's scripted opening for this game, or null
+
 const cur = () => hist[hist.length - 1];
 const sideName = (s) => (s === BONE ? 'The Bone Court' : 'The Ash Court');
 const isAiTurn = () => settings.mode === 'ai' && !result && cur().turn === -settings.humanSide;
+const isOnline = () => settings.mode === 'online';
+const isTutorial = () => settings.mode === 'tutorial';
 
 // ---------------------------------------------------------------------------
 // Board DOM
@@ -156,10 +169,13 @@ function paint() {
     ? isolationInfo(state.board, state.turn, state.flucht[state.turn], true)
     : null;
 
+  const tutMarks = tut ? tutMarkSet() : null;
+
   for (const el of squares) {
     const sq = +el.dataset.sq;
     el.classList.remove('sel', 'move', 'capture', 'flucht-target', 'last-from', 'last-to',
-      'esc-open', 'esc-enemy', 'esc-own', 'doom-enemy', 'doom-own', 'doom-krone', 'krone-warn');
+      'esc-open', 'esc-enemy', 'esc-own', 'doom-enemy', 'doom-own', 'doom-krone', 'krone-warn', 'tut-mark');
+    if (tutMarks && tutMarks.has(sq)) el.classList.add('tut-mark');
     if (lastMove) {
       if (sq === lastMove.from) el.classList.add('last-from');
       if (sq === lastMove.to) el.classList.add('last-to');
@@ -208,6 +224,8 @@ function paintBars() {
     let label = sideName(side);
     if (settings.mode === 'ai') {
       label += side === settings.humanSide ? ' · You' : ' · The Court';
+    } else if (isOnline()) {
+      label += side === settings.humanSide ? ' · You' : ' · The Other Court';
     }
     name.textContent = label;
     sig.className = 'court-sigil ' + (side === BONE ? 'bone' : 'ash');
@@ -229,6 +247,13 @@ function paintStatus() {
   const st = $('status'), sub = $('substatus'), fs = $('focus-status');
   st.classList.toggle('thinking', aiThinking);
   fs.classList.toggle('thinking', aiThinking);
+  paintWinterClock();
+  if (isTutorial()) {
+    st.textContent = 'The Primer';
+    fs.textContent = 'The Primer';
+    sub.textContent = noticeText || '';
+    return;
+  }
   if (result) {
     st.textContent = result.label;
     fs.textContent = result.label;
@@ -242,8 +267,21 @@ function paintStatus() {
     sub.textContent = '';
     return;
   }
+  if (isOnline() && !oppHere) {
+    const t = net && net.role === 'host' ? 'Awaiting the other court.' : 'The line is severed.';
+    st.textContent = t;
+    fs.textContent = t;
+    sub.textContent = net && net.role === 'host'
+      ? 'Share the room code to fill the empty seat.'
+      : 'Rejoin from New Game → Online with the same code.';
+    return;
+  }
   st.textContent = `${sideName(state.turn)} to move.`;
   fs.textContent = st.textContent;
+  if (noticeText) {
+    sub.textContent = noticeText;
+    return;
+  }
   const info = isolationInfo(state.board, state.turn, state.flucht[state.turn], true);
   if (info.open.length === 0) {
     sub.textContent = 'The Krone stands walled in by his own court — one enemy touch from ruin.';
@@ -256,14 +294,25 @@ function paintStatus() {
   }
 }
 
+// The Long Winter approaches: surface the silent-move clock once it matters.
+function paintWinterClock() {
+  const el = $('winter-clock');
+  const clock = cur().clock;
+  const show = !result && !isTutorial() && clock >= 60;
+  el.classList.toggle('hidden', !show);
+  if (show) {
+    el.textContent = `The Long Winter nears — ${Math.floor(clock / 2)} of 50 silent moves.`;
+  }
+}
+
 function paintControls() {
-  const interactive = !result && !aiThinking;
-  $('btn-undo').disabled = hist.length < 2 || aiThinking;
+  const interactive = !result && !aiThinking && !isTutorial();
+  $('btn-undo').disabled = hist.length < 2 || aiThinking || isOnline() || isTutorial();
   $('btn-focus-undo').disabled = $('btn-undo').disabled;
-  $('btn-parley').disabled = !interactive;
-  $('btn-resign').disabled = !interactive;
-  const claims = !result && !aiThinking ? claimableDraws(cur()) : { longSiege: false, longWinter: false };
-  const humanCanClaim = settings.mode === 'hotseat' || cur().turn === settings.humanSide;
+  $('btn-parley').disabled = !interactive || (isOnline() && !oppHere);
+  $('btn-resign').disabled = !interactive || (isOnline() && !oppHere);
+  const claims = interactive ? claimableDraws(cur()) : { longSiege: false, longWinter: false };
+  const humanCanClaim = settings.mode === 'hotseat' || isOnline() || cur().turn === settings.humanSide;
   $('btn-siege').classList.toggle('hidden', !(claims.longSiege && humanCanClaim));
   $('btn-winter').classList.toggle('hidden', !(claims.longWinter && humanCanClaim));
   $('claims').classList.toggle('hidden',
@@ -305,16 +354,28 @@ function onBoardClick(e) {
   const sqEl = e.target.closest('.sq');
   if (!sqEl || result || aiThinking) return;
   if (settings.mode === 'ai' && cur().turn !== settings.humanSide) return;
+  if (isOnline() && (!oppHere || !net?.connected || cur().turn !== settings.humanSide)) return;
+  if (isTutorial() && !LESSONS[tut.step]?.expect) return; // narration steps: the board rests
   const sq = +sqEl.dataset.sq;
   const state = cur();
+  noticeText = null;
 
   if (selection !== null) {
     const mv = legalCache.find((m) => m.from === selection && m.to === sq);
     if (mv) {
+      if (isTutorial() && !tutAllows(mv)) {
+        noticeText = LESSONS[tut.step].expect.hint;
+        selection = null;
+        paint();
+        return;
+      }
       selection = null;
       playMove(mv);
       return;
     }
+    // Not a legal destination — explain why, when there is a why (§6 safeguards)
+    const hint = illegalHint(selection, sq);
+    if (hint) noticeText = hint;
   }
   const p = state.board[sq];
   if (p !== EMPTY && Math.sign(p) === state.turn) {
@@ -325,12 +386,47 @@ function onBoardClick(e) {
   paint();
 }
 
+// If from→to fits the piece's movement but is barred by a rule, say which rule.
+function illegalHint(from, to) {
+  const state = cur();
+  const p = state.board[from];
+  if (p === EMPTY || Math.sign(p) !== state.turn) return null;
+  const q = state.board[to];
+  if (q !== EMPTY && Math.abs(q) === KRONE && Math.sign(q) === -state.turn) {
+    // reachable if the same square held an ordinary piece?
+    const probe = new Int8Array(state.board);
+    probe[to] = BURGER * -state.turn;
+    if (genPseudo(probe, state.turn, false).some((m) => m.from === from && m.to === to)) {
+      return 'The Krone cannot be taken. Only Isolation ends his reign.';
+    }
+    return null;
+  }
+  const pm = genPseudo(state.board, state.turn, state.flucht[state.turn])
+    .find((m) => m.from === from && m.to === to);
+  if (!pm) return null; // not that piece's move at all — no lecture needed
+  const b = new Int8Array(state.board);
+  const u = make(b, pm);
+  const movedKrone = Math.abs(u.piece) === KRONE;
+  if (movedKrone && attacked(b, pm.to, -state.turn)) {
+    return 'The Krone may never step into an enemy’s line.';
+  }
+  const fluchtAfter = state.flucht[state.turn] && !movedKrone;
+  if (isolationInfo(b, state.turn, fluchtAfter).isolated) {
+    return 'Forbidden — that move would isolate your own Krone.';
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Game flow
 // ---------------------------------------------------------------------------
 
-function playMove(m) {
+function playMove(m, fromRemote = false) {
   const before = cur();
+  noticeText = null;
+  if (isOnline() && !fromRemote) {
+    net?.send({ t: 'move', m: { from: m.from, to: m.to }, ply: before.ply });
+  }
   const capturedVal = before.board[m.to];
   const entry = {
     ply: before.ply,
@@ -350,6 +446,14 @@ function playMove(m) {
 function afterPositionChange() {
   const state = cur();
   legalCache = result ? [] : genLegal(state);
+
+  if (isTutorial()) {
+    // No results, no AI, no saving: the Primer narrates its own endings.
+    paint();
+    paintLog();
+    if (tut && LESSONS[tut.step]?.expect) tutAdvance();
+    return;
+  }
 
   if (!result) {
     const end = turnStartResult(state, legalCache);
@@ -422,6 +526,9 @@ function setResult(end) {
 function showGameOver() {
   $('over-title').textContent = result.title;
   $('over-text').textContent = result.text;
+  const rematch = $('btn-over-rematch');
+  rematch.classList.toggle('hidden', !isOnline() || !net?.connected);
+  rematch.disabled = false;
   $('ov-over').classList.remove('hidden');
   $('btn-show-result').classList.add('hidden');
 }
@@ -430,18 +537,46 @@ function showGameOver() {
 // AI
 // ---------------------------------------------------------------------------
 
+// The Court's next scripted opening move, translated to board squares
+// (mirrored when the Court commands Ash), or null once off-book.
+function aiPlanMove() {
+  if (!aiOpening) return null;
+  const aiSide = -settings.humanSide;
+  const played = logEntries.filter((e) => e.side === aiSide).length;
+  const text = aiOpening.line[played];
+  if (!text) return null;
+  const [a, b] = text.split('-');
+  const mirror = (name) => {
+    const r = parseInt(name.slice(1), 10) - 1;
+    const c = name.charCodeAt(0) - 97;
+    return aiSide === BONE ? idx(r, c) : idx(N - 1 - r, c);
+  };
+  return { from: mirror(a), to: mirror(b) };
+}
+
 function scheduleAiMove() {
   aiThinking = true;
   paint();
   const started = Date.now();
   setTimeout(() => {
-    const m = findBestMove(cur(), settings.level);
+    const plan = aiPlanMove();
+    const m = findBestMove(cur(), settings.level, Math.random, plan);
     const elapsed = Date.now() - started;
     const wait = Math.max(0, 450 - elapsed); // let the court appear to think
     setTimeout(() => {
       aiThinking = false;
-      if (m && !result) playMove(m);
-      else if (!result) afterPositionChange();
+      if (m && !result) {
+        const onBook = plan && m.from === plan.from && m.to === plan.to;
+        const firstBookMove = onBook && logEntries.filter((e) => e.side === -settings.humanSide).length === 0;
+        if (plan && !onBook) aiOpening = null; // the script no longer fits the board
+        playMove(m);
+        if (firstBookMove) {
+          noticeText = `The Court essays ${aiOpening.name}.`;
+          paintStatus();
+        }
+      } else if (!result) {
+        afterPositionChange();
+      }
     }, wait);
   }, 60);
 }
@@ -459,6 +594,11 @@ function newGame(fresh) {
     lastMove = null;
     selection = null;
     aiThinking = false;
+    noticeText = null;
+    // The Court picks an opening to essay — novices sometimes just wing it.
+    aiOpening = settings.mode === 'ai' && !(settings.level === 'novice' && Math.random() < 0.4)
+      ? OPENINGS[Math.floor(Math.random() * OPENINGS.length)]
+      : null;
   }
   syncPieces();
   legalCache = result ? [] : genLegal(cur());
@@ -469,7 +609,7 @@ function newGame(fresh) {
 }
 
 function undo() {
-  if (hist.length < 2 || aiThinking) return;
+  if (hist.length < 2 || aiThinking || isOnline()) return;
   const pops = settings.mode === 'ai'
     ? (cur().turn === settings.humanSide && hist.length >= 3 ? 2 : 1)
     : 1;
@@ -502,6 +642,13 @@ function rebuildCaptured() {
 
 function offerParley() {
   if (result || aiThinking) return;
+  if (isOnline()) {
+    if (!net?.connected) return;
+    net.send({ t: 'parley-offer' });
+    $('substatus').textContent = 'A parley is offered to the other court.';
+    addChat('sys', 'You offer a parley.');
+    return;
+  }
   if (settings.mode === 'ai') {
     const aiSide = -settings.humanSide;
     // The Court accepts if it judges itself clearly worse.
@@ -525,8 +672,9 @@ function offerParley() {
 
 function resign() {
   if (result || aiThinking) return;
-  const loser = settings.mode === 'ai' ? settings.humanSide : cur().turn;
+  const loser = settings.mode === 'hotseat' ? cur().turn : settings.humanSide;
   confirmDialog('Resign the Board', `${sideName(loser)} yields the game. Are you certain?`, () => {
+    if (isOnline()) net?.send({ t: 'resign' });
     setResult({ type: 'resign', loser });
     paint(); save();
   });
@@ -537,6 +685,7 @@ function resign() {
 // ---------------------------------------------------------------------------
 
 function save() {
+  if (isOnline() || isTutorial()) return; // these sessions are not persisted
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       settings: { ...settings },
@@ -546,6 +695,7 @@ function save() {
       result: result ? { ...result, info: null } : null,
       flipped,
       lastMove,
+      aiOpeningName: aiOpening ? aiOpening.name : null,
     }));
   } catch { /* storage unavailable — play on without saving */ }
 }
@@ -568,12 +718,14 @@ function load() {
     const o = JSON.parse(raw);
     if (!o.hist || !o.hist.length) return false;
     settings = o.settings;
+    if (settings.mode === 'online') settings.mode = 'hotseat'; // never restore a dead connection
     hist = o.hist.map(deserialize);
     logEntries = o.logEntries || [];
     capturedBy = { [BONE]: o.capturedBy?.[BONE] || [], [ASH]: o.capturedBy?.[ASH] || [] };
     result = o.result || null;
     flipped = !!o.flipped;
     lastMove = o.lastMove || null;
+    aiOpening = OPENINGS.find((op) => op.name === o.aiOpeningName) || null;
     if (result && (result.type === 'isolation' || result.type === 'mutual')) {
       // recompute the doom overlay from the final position
       const s = cur();
@@ -584,6 +736,424 @@ function load() {
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// The Primer (tutorial)
+// ---------------------------------------------------------------------------
+
+function startTutorial() {
+  leaveOnline();
+  settings = { mode: 'tutorial', humanSide: BONE, level: 'courtier' };
+  result = null;
+  aiThinking = false;
+  aiOpening = null;
+  noticeText = null;
+  flipped = false;
+  tut = { step: -1 };
+  $('ov-new').classList.add('hidden');
+  $('ov-rules').classList.add('hidden');
+  $('ov-over').classList.add('hidden');
+  $('btn-show-result').classList.add('hidden');
+  $('tutor-card').classList.remove('hidden');
+  tutAdvance();
+  layoutBoard();
+}
+
+function tutAdvance() {
+  tut.step++;
+  if (tut.step >= LESSONS.length) { exitTutorial(); return; }
+  const s = LESSONS[tut.step];
+  noticeText = null;
+  if (s.setup) {
+    hist = [buildTutState(s.setup)];
+    logEntries = [];
+    capturedBy = { [BONE]: [], [ASH]: [] };
+    lastMove = null;
+    selection = null;
+    legalCache = genLegal(cur());
+    syncPieces();
+  }
+  if (s.escapes !== undefined) $('chk-escapes').checked = !!s.escapes;
+  $('tutor-step').textContent = `${tut.step + 1} of ${LESSONS.length}`;
+  $('tutor-title').textContent = s.title;
+  $('tutor-text').textContent = s.text;
+  $('btn-tutor-next').classList.toggle('hidden', !!s.expect);
+  $('btn-tutor-next').textContent = tut.step === LESSONS.length - 1 ? 'Finish' : 'Continue';
+  paint();
+  paintLog();
+}
+
+function tutAllows(m) {
+  const exp = LESSONS[tut.step]?.expect;
+  if (!exp) return false;
+  if (m.from !== sqOf(exp.from)) return false;
+  return !exp.to || exp.to.some((name) => sqOf(name) === m.to);
+}
+
+function tutMarkSet() {
+  const s = LESSONS[tut.step];
+  const set = new Set();
+  for (const name of s?.marks || []) set.add(sqOf(name));
+  if (s?.expect) {
+    set.add(sqOf(s.expect.from));
+    for (const name of s.expect.to || []) set.add(sqOf(name));
+  }
+  return set;
+}
+
+function exitTutorial() {
+  tut = null;
+  $('tutor-card').classList.add('hidden');
+  $('chk-escapes').checked = false;
+  noticeText = null;
+  // Return to whatever game was in progress before the Primer.
+  if (!load()) {
+    settings = { mode: 'hotseat', humanSide: BONE, level: 'courtier' };
+    hist = [initialState()];
+    logEntries = [];
+    capturedBy = { [BONE]: [], [ASH]: [] };
+    result = null;
+    lastMove = null;
+    flipped = false;
+  }
+  selection = null;
+  layoutBoard();
+  newGame(false);
+  if (result) $('btn-show-result').classList.remove('hidden');
+}
+
+// ---------------------------------------------------------------------------
+// Chronicle export
+// ---------------------------------------------------------------------------
+
+function recordText() {
+  const lines = ['Kronspiel — The Bone Court vs The Ash Court'];
+  if (settings.mode === 'ai') {
+    lines[0] += settings.humanSide === BONE
+      ? ' (Bone: you · Ash: the Court)'
+      : ' (Bone: the Court · Ash: you)';
+  }
+  lines.push('');
+  const entryText = (e) => (e.text ? e.text : `${GLYPHS[e.piece]} ${e.body}`);
+  for (let i = 0; i < logEntries.length; i += 2) {
+    const n = `${i / 2 + 1}.`.padEnd(4);
+    const bone = entryText(logEntries[i]).padEnd(16);
+    const ash = logEntries[i + 1] ? entryText(logEntries[i + 1]) : '';
+    lines.push((n + bone + ash).trimEnd());
+  }
+  if (result) {
+    lines.push('');
+    lines.push('Result: ' + result.label);
+  }
+  return lines.join('\n');
+}
+
+async function copyRecord() {
+  if (!logEntries.length) {
+    noticeText = 'The chronicle is still empty.';
+    paintStatus();
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(recordText());
+    noticeText = 'The chronicle is copied — paste it where you will.';
+  } catch {
+    noticeText = 'Copying failed — your browser withheld the clipboard.';
+  }
+  paintStatus();
+}
+
+// ---------------------------------------------------------------------------
+// Online play
+// ---------------------------------------------------------------------------
+
+let chatUnread = 0;
+
+function showChat(on) {
+  $('chat-card').classList.toggle('hidden', !on);
+  $('btn-focus-chat').classList.toggle('unavailable', !on);
+  if (!on) {
+    document.body.classList.remove('chat-open');
+    chatUnread = 0;
+    paintChatUnread();
+  }
+}
+
+function paintChatUnread() {
+  const el = $('chat-unread');
+  el.classList.toggle('hidden', chatUnread === 0);
+  el.textContent = chatUnread > 9 ? '9+' : String(chatUnread);
+}
+
+function toggleFocusChat() {
+  const open = document.body.classList.toggle('chat-open');
+  if (open) {
+    chatUnread = 0;
+    paintChatUnread();
+    const log = $('chatlog');
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+function clearChat() {
+  $('chatlog').innerHTML = '';
+}
+
+function addChat(kind, text) {
+  if ($('chat-card').classList.contains('hidden')) return;
+  // In focus mode the Parlour is tucked away — count what arrives unseen.
+  if (kind === 'them'
+      && document.body.classList.contains('focus')
+      && !document.body.classList.contains('chat-open')) {
+    chatUnread++;
+    paintChatUnread();
+  }
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + kind;
+  if (kind === 'sys') {
+    div.textContent = text;
+  } else {
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = kind === 'you' ? 'You' : 'They';
+    const body = document.createElement('span');
+    body.textContent = text;
+    div.append(who, body);
+  }
+  const log = $('chatlog');
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function showWait(role, code) {
+  $('wait-title').textContent = role === 'host' ? 'The Table Is Set' : 'Seeking the Table';
+  $('wait-text').textContent = role === 'host'
+    ? (code ? 'Share this code with the other court:' : 'Reaching the courier network…')
+    : 'Knocking with code:';
+  $('wait-code').textContent = code || '';
+  $('wait-status').textContent = '';
+  $('btn-copy-invite').classList.toggle('hidden', role !== 'host' || !code);
+  $('ov-wait').classList.remove('hidden');
+}
+
+function leaveOnline() {
+  if (net) { net.destroy(); net = null; }
+  oppHere = false;
+  hostRetries = 0;
+  showChat(false);
+  $('ov-wait').classList.add('hidden');
+  if (settings.mode === 'online') settings = { ...settings, mode: 'hotseat' };
+}
+
+function netStart(role, code) {
+  net = new Net({
+    onHostReady: (c) => showWait('host', c),
+    onConnect: onPeerConnected,
+    onMessage: onNetMessage,
+    onClose: onPeerClosed,
+    onError: onNetError,
+  });
+  if (role === 'host') {
+    net.host(code);
+    showWait('host', null); // the code appears once the network answers
+  } else {
+    net.join(code);
+    showWait('join', code);
+  }
+}
+
+function leaveTutorial() {
+  if (!tut) return;
+  tut = null;
+  $('tutor-card').classList.add('hidden');
+  $('chk-escapes').checked = false;
+  settings = { ...settings, mode: 'hotseat' };
+}
+
+function startHost(side) {
+  leaveTutorial();
+  leaveOnline();
+  settings = { mode: 'online', humanSide: side, level: 'courtier' };
+  hist = [initialState()];
+  logEntries = [];
+  capturedBy = { [BONE]: [], [ASH]: [] };
+  result = null;
+  lastMove = null;
+  selection = null;
+  aiThinking = false;
+  flipped = side === ASH;
+  $('ov-over').classList.add('hidden');
+  $('btn-show-result').classList.add('hidden');
+  showChat(true);
+  clearChat();
+  layoutBoard();
+  legalCache = genLegal(cur());
+  paint();
+  paintLog();
+  netStart('host', makeCode());
+}
+
+function startJoin(code) {
+  leaveTutorial();
+  leaveOnline();
+  netStart('join', code);
+}
+
+function onPeerConnected() {
+  oppHere = true;
+  hostRetries = 0;
+  if (net.role === 'host') {
+    $('ov-wait').classList.add('hidden');
+    net.send({
+      t: 'welcome',
+      state: serialize(cur()),
+      side: -settings.humanSide,
+      log: logEntries,
+      capBone: capturedBy[BONE],
+      capAsh: capturedBy[ASH],
+    });
+    addChat('sys', 'The other court has arrived. The game is afoot.');
+    paint();
+  }
+  // The guest waits for the host's welcome before taking a seat.
+}
+
+function onNetMessage(msg) {
+  switch (msg.t) {
+    case 'welcome': {
+      if (net?.role !== 'guest') break;
+      settings = { mode: 'online', humanSide: msg.side, level: 'courtier' };
+      hist = [deserialize(msg.state)];
+      logEntries = Array.isArray(msg.log) ? msg.log : [];
+      capturedBy = { [BONE]: msg.capBone || [], [ASH]: msg.capAsh || [] };
+      result = null;
+      lastMove = null;
+      selection = null;
+      aiThinking = false;
+      flipped = settings.humanSide === ASH;
+      $('ov-wait').classList.add('hidden');
+      $('ov-over').classList.add('hidden');
+      $('btn-show-result').classList.add('hidden');
+      showChat(true);
+      clearChat();
+      addChat('sys', `You are seated. You command ${sideName(settings.humanSide)}.`);
+      layoutBoard();
+      afterPositionChange();
+      break;
+    }
+    case 'move':
+      handleRemoteMove(msg);
+      break;
+    case 'chat':
+      addChat('them', String(msg.text || '').slice(0, 300));
+      break;
+    case 'parley-offer':
+      if (result) break;
+      confirmDialog('A Parley Is Offered', 'The other court offers a draw. Do you accept?', () => {
+        net?.send({ t: 'parley-accept' });
+        setResult({ type: 'parley' });
+        paint();
+      }, () => {
+        net?.send({ t: 'parley-decline' });
+      });
+      break;
+    case 'parley-accept':
+      if (!result) { setResult({ type: 'parley' }); paint(); }
+      break;
+    case 'parley-decline':
+      $('substatus').textContent = 'The other court declines your parley.';
+      addChat('sys', 'The other court declines your parley.');
+      break;
+    case 'resign':
+      if (!result) { setResult({ type: 'resign', loser: -settings.humanSide }); paint(); }
+      break;
+    case 'claim': {
+      if (result) break;
+      const claims = claimableDraws(cur());
+      if (msg.kind === 'siege' && claims.longSiege) { setResult({ type: 'siege' }); paint(); }
+      if (msg.kind === 'winter' && claims.longWinter) { setResult({ type: 'winter' }); paint(); }
+      break;
+    }
+    case 'rematch-offer':
+      confirmDialog('A Rematch Is Offered', 'The other court proposes a fresh board, sides exchanged. Accept?', () => {
+        net?.send({ t: 'rematch-accept' });
+        doRematch();
+      }, () => {
+        net?.send({ t: 'rematch-decline' });
+      });
+      break;
+    case 'rematch-accept':
+      doRematch();
+      break;
+    case 'rematch-decline':
+      addChat('sys', 'The other court declines a rematch.');
+      $('btn-over-rematch').disabled = false;
+      break;
+  }
+}
+
+function handleRemoteMove(msg) {
+  if (result || !msg.m) return;
+  const state = cur();
+  // Only the opponent's moves, only on their turn, only if legal here too.
+  if (state.turn === settings.humanSide || state.ply !== msg.ply) return desync();
+  const mv = legalCache.find((x) => x.from === msg.m.from && x.to === msg.m.to);
+  if (!mv) return desync();
+  selection = null;
+  playMove(mv, true);
+}
+
+function desync() {
+  addChat('sys', 'The two boards have fallen out of step. Start a fresh game together.');
+}
+
+function onPeerClosed() {
+  if (!net) return;
+  oppHere = false;
+  if (!result) {
+    addChat('sys', 'The other court has left the table.');
+    if (net.role === 'host') {
+      showWait('host', net.code);
+      $('wait-status').textContent = 'The seat is empty — the same code lets them return.';
+    }
+  }
+  paint();
+}
+
+function onNetError(kind) {
+  if (kind === 'unavailable-id' && net?.role === 'host' && hostRetries < 3) {
+    hostRetries++;
+    const old = net; net = null; old.destroy();
+    netStart('host', makeCode());
+    return;
+  }
+  const text = kind === 'peer-unavailable'
+    ? 'No table answers to that code.'
+    : 'The courier network cannot be reached. Try again shortly.';
+  if (!$('ov-wait').classList.contains('hidden')) {
+    $('wait-status').textContent = text;
+  } else {
+    addChat('sys', text);
+  }
+}
+
+function doRematch() {
+  settings = { ...settings, humanSide: -settings.humanSide };
+  hist = [initialState()];
+  logEntries = [];
+  capturedBy = { [BONE]: [], [ASH]: [] };
+  result = null;
+  lastMove = null;
+  selection = null;
+  flipped = settings.humanSide === ASH;
+  $('ov-over').classList.add('hidden');
+  $('btn-show-result').classList.add('hidden');
+  addChat('sys', `A fresh board. You now command ${sideName(settings.humanSide)}.`);
+  layoutBoard();
+  legalCache = genLegal(cur());
+  paint();
+  paintLog();
 }
 
 // ---------------------------------------------------------------------------
@@ -613,6 +1183,7 @@ function paintPieceSetPreview() {
 
 function setFocus(on) {
   document.body.classList.toggle('focus', on);
+  if (!on) document.body.classList.remove('chat-open');
   if (on) {
     // Native fullscreen where the platform allows it (not iOS Safari);
     // the CSS focus layout stands on its own either way.
@@ -623,11 +1194,13 @@ function setFocus(on) {
 }
 
 let confirmYes = null;
+let confirmNo = null;
 
-function confirmDialog(title, text, onYes) {
+function confirmDialog(title, text, onYes, onNo = null) {
   $('confirm-title').textContent = title;
   $('confirm-text').textContent = text;
   confirmYes = onYes;
+  confirmNo = onNo;
   $('ov-confirm').classList.remove('hidden');
 }
 
@@ -650,8 +1223,23 @@ function wireUi() {
   $('btn-new').addEventListener('click', () => $('ov-new').classList.remove('hidden'));
   $('btn-new-cancel').addEventListener('click', () => $('ov-new').classList.add('hidden'));
   $('btn-new-start').addEventListener('click', () => {
+    leaveTutorial();
+    const mode = segValue('seg-mode');
+    if (mode === 'online') {
+      if (segValue('seg-net-role') === 'join') {
+        const code = normalizeCode($('join-code').value);
+        if (!code) { $('join-code').focus(); return; }
+        $('ov-new').classList.add('hidden');
+        startJoin(code);
+      } else {
+        $('ov-new').classList.add('hidden');
+        startHost(segValue('seg-host-side') === 'bone' ? BONE : ASH);
+      }
+      return;
+    }
+    leaveOnline();
     settings = {
-      mode: segValue('seg-mode'),
+      mode,
       humanSide: segValue('seg-side') === 'bone' ? BONE : ASH,
       level: segValue('seg-level'),
     };
@@ -662,14 +1250,61 @@ function wireUi() {
     layoutBoard();
   });
   wireSeg('seg-mode', (v) => {
-    $('ov-new').querySelector('.dialog').classList.toggle('hide-ai', v !== 'ai');
+    const dlg = $('ov-new').querySelector('.dialog');
+    dlg.classList.toggle('hide-ai', v !== 'ai');
+    dlg.classList.toggle('mode-online', v === 'online');
   });
   wireSeg('seg-side');
   wireSeg('seg-level');
+  wireSeg('seg-net-role', (v) => {
+    $('ov-new').querySelector('.dialog').classList.toggle('role-join', v === 'join');
+  });
+  wireSeg('seg-host-side');
   $('ov-new').querySelector('.dialog').classList.add('hide-ai');
+
+  // Online: waiting overlay, chat, rematch
+  $('btn-wait-cancel').addEventListener('click', () => {
+    leaveOnline();
+    paint();
+  });
+  $('btn-copy-invite').addEventListener('click', async () => {
+    const code = net?.code || '';
+    if (!code) return;
+    const url = `${location.origin}${location.pathname}?join=${code}`;
+    const text = `Kronspiel — join my table with code ${code}: ${url}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      $('wait-status').textContent = 'Invitation copied — paste it to the other court.';
+    } catch {
+      $('wait-status').textContent = 'Copying failed — share the code above by hand.';
+    }
+  });
+  $('chat-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = $('chat-input').value.trim().slice(0, 300);
+    if (!text || !net?.connected) return;
+    net.send({ t: 'chat', text });
+    addChat('you', text);
+    $('chat-input').value = '';
+  });
+  $('btn-over-rematch').addEventListener('click', () => {
+    if (!net?.connected) return;
+    net.send({ t: 'rematch-offer' });
+    $('btn-over-rematch').disabled = true;
+    addChat('sys', 'You offer a rematch.');
+  });
 
   $('btn-rules').addEventListener('click', () => $('ov-rules').classList.remove('hidden'));
   $('btn-rules-close').addEventListener('click', () => $('ov-rules').classList.add('hidden'));
+
+  // The Primer
+  $('btn-primer-rules').addEventListener('click', startTutorial);
+  $('btn-primer-new').addEventListener('click', startTutorial);
+  $('btn-tutor-next').addEventListener('click', () => { if (tut) tutAdvance(); });
+  $('btn-tutor-exit').addEventListener('click', () => { if (tut) exitTutorial(); });
+
+  // Chronicle export
+  $('btn-export').addEventListener('click', copyRecord);
 
   $('btn-options').addEventListener('click', () => {
     const seg = $('seg-pieces');
@@ -686,10 +1321,14 @@ function wireUi() {
     applyPieceSet();
   });
 
-  $('btn-confirm-no').addEventListener('click', () => { confirmYes = null; $('ov-confirm').classList.add('hidden'); });
+  $('btn-confirm-no').addEventListener('click', () => {
+    $('ov-confirm').classList.add('hidden');
+    const fn = confirmNo; confirmYes = null; confirmNo = null;
+    if (fn) fn();
+  });
   $('btn-confirm-yes').addEventListener('click', () => {
     $('ov-confirm').classList.add('hidden');
-    const fn = confirmYes; confirmYes = null;
+    const fn = confirmYes; confirmYes = null; confirmNo = null;
     if (fn) fn();
   });
 
@@ -709,16 +1348,26 @@ function wireUi() {
   $('btn-resign').addEventListener('click', resign);
   $('chk-escapes').addEventListener('change', paint);
 
-  $('btn-siege').addEventListener('click', () => { setResult({ type: 'siege' }); paint(); save(); });
-  $('btn-winter').addEventListener('click', () => { setResult({ type: 'winter' }); paint(); save(); });
+  $('btn-siege').addEventListener('click', () => {
+    if (isOnline()) net?.send({ t: 'claim', kind: 'siege' });
+    setResult({ type: 'siege' }); paint(); save();
+  });
+  $('btn-winter').addEventListener('click', () => {
+    if (isOnline()) net?.send({ t: 'claim', kind: 'winter' });
+    setResult({ type: 'winter' }); paint(); save();
+  });
 
   // Full-screen focus mode
   $('btn-focus').addEventListener('click', () => setFocus(!document.body.classList.contains('focus')));
   $('btn-focus-exit').addEventListener('click', () => setFocus(false));
   $('btn-focus-undo').addEventListener('click', undo);
+  $('btn-focus-chat').addEventListener('click', toggleFocusChat);
   document.addEventListener('fullscreenchange', () => {
     // leaving native fullscreen (back gesture, Esc) also leaves focus mode
-    if (!document.fullscreenElement) document.body.classList.remove('focus');
+    if (!document.fullscreenElement) {
+      document.body.classList.remove('focus');
+      document.body.classList.remove('chat-open');
+    }
   });
 
   // click outside a dialog closes the passive ones
@@ -744,4 +1393,11 @@ paintRuleIcons();
 newGame(false);
 if (result) {
   $('btn-show-result').classList.remove('hidden');
+}
+
+// An invitation link (?join=CODE) goes straight to the table.
+const joinParam = new URLSearchParams(location.search).get('join');
+if (joinParam && normalizeCode(joinParam)) {
+  history.replaceState(null, '', location.pathname);
+  startJoin(normalizeCode(joinParam));
 }

@@ -80,9 +80,20 @@
     </section>
 
     <aside class="sidebar">
+      <div class="log-card tutor-card hidden" id="tutor-card">
+        <h2>The Primer <span id="tutor-step" class="tutor-step"></span></h2>
+        <h3 id="tutor-title" class="tutor-title"></h3>
+        <p id="tutor-text" class="tutor-text"></p>
+        <div class="tutor-actions">
+          <button id="btn-tutor-exit" class="btn mini ghost">Leave the Primer</button>
+          <button id="btn-tutor-next" class="btn mini primary">Continue</button>
+        </div>
+      </div>
+
       <div class="status-card">
         <div id="status" class="status">The Bone Court to move.</div>
         <div id="substatus" class="substatus"></div>
+        <div id="winter-clock" class="winter-clock hidden"></div>
       </div>
 
       <div class="controls">
@@ -103,8 +114,17 @@
       </label>
 
       <div class="log-card">
-        <h2>Chronicle</h2>
+        <h2 class="with-action">Chronicle <button id="btn-export" class="btn mini" title="Copy the game record as text">Copy</button></h2>
         <ol id="movelog" class="movelog"></ol>
+      </div>
+
+      <div class="log-card chat-card hidden" id="chat-card">
+        <h2>Parlour</h2>
+        <div id="chatlog" class="chatlog"></div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" class="text-input" maxlength="300" placeholder="Speak…" autocomplete="off">
+          <button class="btn mini" type="submit">Send</button>
+        </form>
       </div>
     </aside>
 
@@ -125,6 +145,7 @@
       <div class="seg" id="seg-mode">
         <button data-v="hotseat" class="seg-btn active">Two Players</button>
         <button data-v="ai" class="seg-btn">Against the Court</button>
+        <button data-v="online" class="seg-btn">Online</button>
       </div>
     </div>
     <div class="field ai-only">
@@ -142,7 +163,28 @@
         <button data-v="spymaster" class="seg-btn">Spymaster</button>
       </div>
     </div>
+    <div class="field online-only">
+      <span class="field-label">Your part</span>
+      <div class="seg" id="seg-net-role">
+        <button data-v="host" class="seg-btn active">Create a Table</button>
+        <button data-v="join" class="seg-btn">Join by Code</button>
+      </div>
+    </div>
+    <div class="field online-only host-only">
+      <span class="field-label">You command</span>
+      <div class="seg" id="seg-host-side">
+        <button data-v="bone" class="seg-btn active">The Bone Court</button>
+        <button data-v="ash" class="seg-btn">The Ash Court</button>
+      </div>
+    </div>
+    <div class="field online-only join-only">
+      <span class="field-label">Room code</span>
+      <input id="join-code" class="text-input" maxlength="8" placeholder="e.g. K7QF"
+             autocomplete="off" autocapitalize="characters" spellcheck="false">
+    </div>
+    <p class="dialog-note online-only">Play travels directly between your two browsers; share the code by any messenger you like.</p>
     <div class="dialog-actions">
+      <button class="btn ghost" id="btn-primer-new">First Time? The Primer</button>
       <button class="btn ghost" id="btn-new-cancel">Cancel</button>
       <button class="btn primary" id="btn-new-start">Begin</button>
     </div>
@@ -155,7 +197,7 @@
     <h2>The Rules, Briefly</h2>
     <div class="rules-body">
       <h3>The board</h3>
-      <p>Eleven by eleven, ash-grey and bone-pale. The centre square — the <strong>Aschenstuhl</strong>, the Ash Seat — is permanently empty. No piece may ever occupy it, sliding pieces cannot see past it, and a Gesandter may leap over it but never land on it. For the Krone it behaves exactly as the edge of the board: a square he cannot step onto, but never an enemy hand at his throat.</p>
+      <p>Eleven by eleven, ash-grey and bone-pale. The centre square — the <strong>Aschenstuhl</strong>, the Ash Seat — is permanently empty. No piece may ever occupy it, sliding pieces cannot see past it, and a Gesandter may leap over it but never land on it. For the Krone it behaves exactly as the edge of the board: a square he cannot step onto, but never an enemy hand at his throat. A Bürger whose file runs into the throne — standing at f5 or f7 — may step diagonally around it onto e6 or g6, capture or no capture: the game's one non-capturing diagonal step.</p>
 
       <h3>The pieces</h3>
       <ul>
@@ -164,7 +206,7 @@
         <li><strong><span class="rule-ico" data-piece="3"></span> Marschall</strong> — any distance orthogonally.</li>
         <li><strong><span class="rule-ico" data-piece="4"></span> Prälat</strong> — any distance diagonally.</li>
         <li><strong><span class="rule-ico" data-piece="5"></span> Gesandter</strong> — the broken L-step; leaps over anything in its path.</li>
-        <li><strong><span class="rule-ico" data-piece="6"></span> Bürger</strong> — one square forward (two on its first move), capturing one square diagonally forward. A Bürger reaching the far rank promotes — <em>only ever</em> to a Gesandter. There is no en passant.</li>
+        <li><strong><span class="rule-ico" data-piece="6"></span> Bürger</strong> — one square forward; on its first move only, it may instead advance one, two, or three squares in a straight line. Captures one square diagonally forward, at any time. A Bürger reaching the far rank promotes — <em>only ever</em> to a Gesandter. There is no en passant.</li>
       </ul>
 
       <h3>Die Flucht</h3>
@@ -174,9 +216,10 @@
       <p>There is no check, no checkmate, and no stalemate-as-draw. At the start of every turn, before any piece moves, the Krone of the player to move is examined. He is <strong>Isolated</strong> — and the game instantly lost — when both of the following hold:</p>
       <ol>
         <li>Every square adjacent to him (including any square still reachable by Die Flucht) is occupied by a piece of <em>either</em> colour, threatened by an enemy piece, or off the board.</li>
-        <li>At least one of those squares is occupied or threatened by an <em>enemy</em> piece.</li>
+        <li>Either the Krone's own square is directly threatened by an enemy piece, or at least one adjacent square that is <em>genuinely empty</em> — held by no piece of either colour — is threatened by an enemy piece.</li>
       </ol>
-      <p>A Krone is never undone by his own house alone — he is undone by his own house under siege. It makes no difference that his own men built most of the wall.</p>
+      <p>An enemy threat against a square already filled by the Krone's own court counts for nothing — that door was never going to open for him regardless. Only two things end a Krone's reign: a blade genuinely at his own throat, or a genuinely empty door that the enemy, and the enemy alone, has nailed shut. A Krone is never undone by his own house alone — he is undone by his own house under siege, and it makes no difference that his own men built most of the wall.</p>
+      <p><strong>The Krone cannot be taken.</strong> No move may capture a Krone — it is simply not a legal move, exactly as landing on the Aschenstuhl is not. A Krone may stand indefinitely on a threatened square; only Isolation ends his part in the game.</p>
       <p><strong>There is no rescue.</strong> Isolation is judged before the court is given leave to act. A piece that could have captured the offending enemy, or blocked its line, does not save him — the move that would have done it always comes one turn too late. The one safeguard the rules provide: you may never voluntarily make a move that isolates your own Krone, just as the Krone may never step into an enemy's line.</p>
 
       <h3>Draws</h3>
@@ -192,6 +235,7 @@
       <p>The Bone Court moves first. Ranks run 1–11 from the Bone home rank; files run a–k from the left of the Bone player.</p>
     </div>
     <div class="dialog-actions">
+      <button class="btn ghost" id="btn-primer-rules">Learn by Doing — the Primer</button>
       <button class="btn primary" id="btn-rules-close">Close</button>
     </div>
   </div>
@@ -235,13 +279,30 @@
     <p id="over-text"></p>
     <div class="dialog-actions">
       <button class="btn ghost" id="btn-over-board">View the Board</button>
+      <button class="btn hidden" id="btn-over-rematch">Offer Rematch</button>
       <button class="btn primary" id="btn-over-new">New Game</button>
+    </div>
+  </div>
+</div>
+
+<!-- Online: awaiting connection -->
+<div class="overlay hidden" id="ov-wait">
+  <div class="dialog netwait">
+    <h2 id="wait-title">The Table Is Set</h2>
+    <p id="wait-text">Share this code with the other court:</p>
+    <div class="room-code" id="wait-code"></div>
+    <div id="wait-status"></div>
+    <div class="dialog-actions">
+      <button class="btn" id="btn-copy-invite">Copy Invitation</button>
+      <button class="btn ghost" id="btn-wait-cancel">Cancel</button>
     </div>
   </div>
 </div>
 <button class="btn result-chip hidden" id="btn-show-result">Show Result</button>
 <button class="focus-btn" id="btn-focus" title="Full-screen view" aria-label="Toggle full-screen view">⛶</button>
+<button class="focus-btn unavailable" id="btn-focus-chat" title="The Parlour" aria-label="Toggle chat">✉<span id="chat-unread" class="chat-unread hidden"></span></button>
 
+<script src="js/vendor/peerjs.min.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
