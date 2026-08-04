@@ -80,7 +80,7 @@ function playGame(seed, script = []) {
     if (ply >= PLY_CAP) return { type: 'cap', plies: ply, bookPlayed, evalAfterBook, moves };
 
     let m = null;
-    if (turn === BONE && bi < script.length) {
+    if ((turn === BONE || script.duo) && bi < script.length) {
       const want = parseMove(script[bi]);
       m = legal.find((x) => x.from === want.from && x.to === want.to) || null;
       if (m) { bi++; bookPlayed++; }
@@ -119,6 +119,12 @@ if (mode === 'book') {
 } else if (mode === 'line') {
   const [name, movesCsv, n = '20', seed = '14000'] = rest;
   await batch(`op-line-${name}.jsonl`, `line:${name}`, +n, +seed, movesCsv.split(','));
+} else if (mode === 'duo') {
+  // Script forces the opening for BOTH sides (alternating plies), then free play.
+  const [name, movesCsv, n = '20', seed = '15000'] = rest;
+  const script = movesCsv.split(',');
+  script.duo = true;
+  await batch(`op-duo-${name}.jsonl`, `duo:${name}`, +n, +seed, script);
 } else if (mode === 'free') {
   const [n = '24', seed = '12000', label = ''] = rest;
   await batch(`op-free${label}.jsonl`, 'free', +n, +seed, []);

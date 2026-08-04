@@ -255,21 +255,47 @@
 <h3>Die Flucht is half the game</h3>
 <p>In the free-play control, <strong>a Krone spent Die Flucht in 24 of 48 games</strong>. The once-per-game escape is not a curiosity; it is a live resource in every second game, and its mere availability shapes the opening — every early Krone move permanently spends it. A finding worth a sentence in §7: good players treat the unspent Flucht as a piece in hand.</p>
 
-<h2><span class="num">VI.</span>Counsel for the Designer</h2>
+<h2><span class="num">VI.</span>The Second Expedition</h2>
+<p>Two follow-up hunts, 160 further games and five further oracle positions: does the Far Door have a rival, and is the early Flucht a plan or a sin? The first hunt found something better than a rival.</p>
+
+<div class="card verdict">
+  <h3 style="margin-top:0">The Fool's Gate — a forced win in two moves <span class="verdict-tag tag-cost">A trap, verified</span></h3>
+  <p><strong>1. f2–f5&nbsp;&nbsp;f10–f9??&nbsp;&nbsp;2. e1–j6</strong> — and the Ash Krone is isolated on move two. The engine confirms it cold: every neighbour of f11 is his own court, the one empty door is f10, and the Kanzler on j6 stares at that door from clear across the board, down the diagonal the first move opened. The mirror 2. g1–b6 works identically.</p>
+  <p>The mechanism is the beautiful part. The losing move looks natural — it steps toward the centre, it was the <em>most popular</em> reply among shallow engines (and killed seven of them in twenty games), and even a 90-second oracle one ply earlier rated it level with the best. Its sin is invisible to material counting: <strong>the half-step pawn stands on his own Krone's Flucht corridor.</strong> Dash fully to f7 and f9 stays empty — the Krone's untouched Flucht counts as an open door, and the trap evaporates. Stop one square short, and your own commoner has bolted the king's road behind him.</p>
+  <p style="margin-bottom:6px">Every folk game earns its cautionary miniature — this is Kronspiel's, and it teaches the game's two deepest lessons in a single stroke: your own court is the wall that kills you, and the unspent Flucht is a piece in hand.</p>
+  <kron-demo label="The Fool's Gate" moves="f2-f5 f10-f9 e1-j6">
+    <script type="application/json">{
+      "0": "The shortest possible game of Kronspiel — verified as forced by the engine.",
+      "1": "1. f2–f5 — the Throne Road, opening both Kanzler diagonals through f2.",
+      "2": "1… f10–f9?? — one step, not three. It looks careful. It stands on the Krone's own Flucht road — f9 was his escape square.",
+      "3": "2. e1–j6 — the Kanzler crosses the whole board and looks once at f10: the only empty door, now an enemy's. Every other neighbour is the Krone's own court. Isolated, move two. (2. g1–b6 mirrors it.)"
+    }</script>
+  </kron-demo>
+</div>
+
+<h3>The Far Door has no rival — only two forbidden answers</h3>
+<p>Six forced Ash replies to the Throne Road, twenty games each: f10–f7 and the flanking doors e10–e7, g10–g7, e10–e8 all land in a statistical dead heat in play (Bone 50–65%, inside the noise of these samples). The oracle separates them where the trials cannot: Bone's best continuation is worth about <strong>265 against the Far Door and about 310 against every flanking door</strong> — a real but modest edge to f10–f7, roughly half a Bürger. So the Far Door keeps its title on points, the flanks are honourable seconds, and two answers are now confirmed forbidden by both trial and oracle: <strong>the edge dash a10–a7 loses ground</strong> (Bone 70%), and <strong>f10–f9 loses the game</strong>. The distilled rule for §8: <em>on the f-file, dash fully or not at all; and never answer the centre with the edge.</em></p>
+
+<h3>The Flucht question: procession or hoard?</h3>
+<p>Interventional test — the Throne Road played with and without the Krone's early Flucht-procession (4. f1–f4): <strong>79% against 75%</strong>. No measurable cost either way; the grand early Flucht is a genuine freedom, not an error. The observational data leans the other way at the far end of the game, though: across all 656 recorded side-games, a Krone who <em>kept</em> his Flucht and finally spent it late won 55%, while one who had already walked it away won 42%. Confounded numbers (besieged Krones are forced to walk) — but together with the trap above, the counsel writes itself: <em>the Flucht is worth most as a held threat, and worth everything as an open door.</em></p>
+
+<h2><span class="num">VII.</span>Counsel for the Designer</h2>
 <ol>
   <li><strong>The five names survive contact with the engine — as literature and as design.</strong> The two “respectable” openings test sound; the three disreputable ones test unsound <em>in exactly the manner their own descriptions promise</em>. A rulebook whose flavour text is quantitatively honest is a rare and pleasing thing. Change nothing.</li>
   <li><strong>Consider adding the Throne Road and the Far Door to §8</strong> as the modern main line — the opening a Kaltmann or a Sigismund-trained player would know cold. Suggested register: <em>“The Throne Road — the commoner's march to the foot of the empty chair, favoured since the reach rule entered the rulebook. Its refutation has not been found; its imitators on the wings have found nothing at all.”</em></li>
   <li><strong>Let the fiction exploit the Drowned Flank's true nature:</strong> it is the one opening whose strength depends on the opponent's credulity — a purpose-built scene where a character wins with an objectively bad opening, or loses by trusting one.</li>
-  <li><strong>Opening principles for the primer, if wanted:</strong> dash a centre Bürger; open a counsellor's window and use it modestly; meet the dash at the Far Door; never answer the centre with the edge; and spend Die Flucht like gold, because half of all games are decided with it in hand or in flight.</li>
+  <li><strong>Opening principles for the primer, if wanted:</strong> dash a centre Bürger; open a counsellor's window and use it modestly; meet the dash at the Far Door; on the f-file, dash fully or not at all; never answer the centre with the edge; and spend Die Flucht like gold, because half of all games are decided with it in hand or in flight.</li>
+  <li><strong>Give the Fool's Gate to the book.</strong> A folk game with a named two-move trap is a folk game with teeth, and this one demonstrates the whole philosophy of Kronspiel in three plies. Suggested register for §8: <em>“The Fool's Gate — the provincial's funeral: 1. f2–f5 f10–f9 2. e1–j6, and the Krone is walled alive by his own commoner. Every child of the capital is shown it once; the ones worth teaching never need it shown twice.”</em></li>
 </ol>
 
-<h2><span class="num">VII.</span>Appendix — Reproducing the Study</h2>
+<h2><span class="num">VIII.</span>Appendix — Reproducing the Study</h2>
 <pre><code>node sim/gen-variants.mjs                          # build the analysis engine
 node sim/openings.mjs analyze [moves…]             # the Oracle (e.g. analyze f2-f5)
 node sim/openings.mjs book &lt;opening&gt; 24 11000      # closedgate | sigismund | ashen | drowned | beggars
 node sim/openings.mjs free 24 12000 -a             # free-play control
 node sim/openings.mjs first f2-f5 20 13000         # forced first move
-node sim/openings.mjs line name "f2-f5,e1-g3" 20   # any scripted line</code></pre>
+node sim/openings.mjs line name "f2-f5,e1-g3" 20   # scripted line (Bone only)
+node sim/openings.mjs duo name "f2-f5,f10-f9" 20   # scripted prefix, both sides</code></pre>
 <p>Every game is seeded and reproducible; movelists are recorded in full in <code>sim/out/op-*.jsonl</code>.</p>
 <p>The steppable diagrams on this page are <code>&lt;kron-demo&gt;</code> elements — a small reusable framework in <code>js/demo.js</code>. Give it a move list and optional per-ply notes, and it replays the line through the game's real engine (captures, dashes, side-steps, Die Flucht and promotion all behave exactly as at the table), rendered with the Court Sigils. It works in any page on this site:</p>
 <pre><code>&lt;script type="module" src="js/demo.js"&gt;&lt;/script&gt;
@@ -279,7 +305,7 @@ node sim/openings.mjs line name "f2-f5,e1-g3" 20   # any scripted line</code></p
 
 <footer>
   <p>“Even a common man finds his way around an empty chair, when the alternative is standing before it forever.”</p>
-  <p class="attribution">Prepared for the Designer by Claude (Fable 5) · 328 games and three oracles · August 2026 · companion to <a href="sim_results.html">the Rules Commission</a></p>
+  <p class="attribution">Prepared for the Designer by Claude (Fable 5) · 488 games and eight oracles · August 2026 · companion to <a href="sim_results.html">the Rules Commission</a></p>
 </footer>
 
 </div>
