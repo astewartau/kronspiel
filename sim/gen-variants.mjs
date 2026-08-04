@@ -59,8 +59,16 @@ const blocked = (i) => i === ASCH || FROZEN.has(i);`,
   { from: "        if (i === ASCH || board[i] !== EMPTY) break;", to: "        if (blocked(i) || board[i] !== EMPTY) break;" },
 ], 'engine/winter');
 
+// --- ai patch: expose root move scores for opening analysis ---
+const aiAnalysis = patch(aiSrc, [{
+  from: "  // A court playing its opening keeps to the script while the script holds up.",
+  to: `  findBestMove.lastScores = bestByDepth.map((x) => ({ from: x.m.from, to: x.m.to, v: x.v }));
+  // A court playing its opening keeps to the script while the script holds up.`,
+}], 'ai/analysis');
+
 const variants = {
   baseline: { engine: engineSrc, ai: aiSrc },
+  analysis: { engine: engineSrc, ai: aiAnalysis },
   frozenloss: { engine: engineSrc, ai: aiFrozenLoss },
   loose: { engine: engineLoose, ai: aiSrc },
   winter: { engine: engineWinter, ai: aiSrc },

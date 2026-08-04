@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kronspiel — The Opening Book</title>
+<meta name="description" content="A simulation study of Kronspiel's named openings — and the discovery of the Throne Road.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>♚</text></svg>">
+<style>
+  :root {
+    --bg: #0f0d0b; --bg-2: #16130f; --panel: #1c1813; --panel-edge: #2e2820;
+    --ink: #d8cfbe; --ink-dim: #9a8f7c;
+    --gold: #c8a24a; --gold-bright: #e8c96a; --gold-pale: #f2dfa0; --gold-deep: #7a5f28;
+    --ember: #b8442f; --ember-soft: #d06a4a; --green: #6f9e5f;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(1200px 700px at 50% -10%, #262015 0%, transparent 60%),
+      radial-gradient(900px 600px at 90% 110%, #1c150d 0%, transparent 55%),
+      var(--bg);
+    color: var(--ink);
+    font-family: "EB Garamond", Georgia, serif;
+    font-size: 17.5px; line-height: 1.6;
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    background: radial-gradient(120% 90% at 50% 30%, transparent 60%, rgba(4,3,1,0.4) 100%);
+  }
+  .page { position: relative; z-index: 2; max-width: 880px; margin: 0 auto; padding: 40px 22px 60px; }
+  header { text-align: center; margin-bottom: 8px; }
+  h1 {
+    font-family: "Cinzel Decorative", "Cinzel", serif;
+    font-size: clamp(30px, 5.4vw, 46px); letter-spacing: 0.12em; margin: 0;
+    background: linear-gradient(105deg, var(--gold-deep) 0%, var(--gold) 28%, var(--gold-pale) 50%, var(--gold) 72%, var(--gold-deep) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 18px rgba(200,162,74,0.22));
+  }
+  .report-title {
+    font-family: "Cinzel", serif; font-size: clamp(17px, 2.6vw, 22px);
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); margin: 14px 0 4px;
+  }
+  .tagline { font-style: italic; color: var(--ink-dim); margin: 2px 0 0; }
+  .ornament { display: flex; align-items: center; gap: 14px; margin: 26px 0; }
+  .ornament::before, .ornament::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, #8a6d2e); }
+  .ornament::after { background: linear-gradient(90deg, #8a6d2e, transparent); }
+  .ornament span { color: var(--gold); font-size: 13px; letter-spacing: 6px; }
+  h2 { font-family: "Cinzel", serif; font-size: 19px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); margin: 44px 0 12px; }
+  h2 .num { color: #8a6d2e; margin-right: 10px; }
+  h3 { font-family: "Cinzel", serif; font-size: 15px; letter-spacing: 0.08em; color: var(--gold-bright); margin: 24px 0 6px; font-weight: 600; }
+  p { margin: 10px 0; }
+  strong { color: var(--gold-bright); font-weight: 600; }
+  ul, ol { margin: 8px 0; padding-left: 26px; }
+  li { margin: 5px 0; }
+  .card {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--panel-edge); border-radius: 4px;
+    padding: 18px 22px; margin: 18px 0; position: relative;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  }
+  .card::before { content: ""; position: absolute; top: 0; left: 16px; right: 16px; height: 1px; background: linear-gradient(90deg, transparent, rgba(200,162,74,0.55), transparent); }
+  .card.verdict { border-color: #6a5a2f; }
+  blockquote { margin: 12px 0; padding: 8px 18px; border-left: 2px solid var(--gold-deep); font-style: italic; color: var(--ink-dim); font-size: 16px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 15.5px; font-variant-numeric: tabular-nums; }
+  th { font-family: "Cinzel", serif; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); font-weight: 600; text-align: left; padding: 8px 10px; border-bottom: 1px solid #3a3226; }
+  td { padding: 7px 10px; border-bottom: 1px solid #241f17; vertical-align: top; }
+  tr:nth-child(odd) td { background: rgba(255,244,214,0.02); }
+  td.r, th.r { text-align: right; }
+  .table-scroll { overflow-x: auto; }
+  .vname { font-family: "Cinzel", serif; font-size: 13.5px; letter-spacing: 0.04em; color: var(--gold-bright); white-space: nowrap; }
+  .good { color: var(--green); } .bad { color: var(--ember-soft); } .meh { color: var(--ink-dim); }
+  .bar { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+  .bar .track { flex: 1; height: 9px; background: #241f17; border-radius: 5px; overflow: hidden; position: relative; }
+  .bar .fill { height: 100%; background: linear-gradient(90deg, var(--gold-deep), var(--gold-bright)); border-radius: 5px; }
+  .bar .mark { position: absolute; top: -2px; bottom: -2px; width: 2px; background: rgba(216,207,190,0.5); }
+  .bar .val { font-size: 13.5px; color: var(--ink-dim); width: 36px; text-align: right; }
+  .verdict-tag { display: inline-block; font-family: "Cinzel", serif; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; border-radius: 3px; padding: 2px 10px; margin-left: 10px; vertical-align: 2px; }
+  .tag-sound { border: 1px solid #4c6b40; color: var(--green); }
+  .tag-lore  { border: 1px solid #6a5a2f; color: var(--gold-bright); }
+  .tag-cost  { border: 1px solid #7e352a; color: var(--ember-soft); }
+  .caveat { font-size: 15px; color: var(--ink-dim); font-style: italic; }
+  code, .mono { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: 14px; background: #16120d; border: 1px solid #2e2820; border-radius: 3px; padding: 1px 6px; color: var(--gold-pale); }
+  pre { background: #16120d; border: 1px solid #2e2820; border-radius: 4px; padding: 12px 16px; overflow-x: auto; }
+  pre code { border: none; padding: 0; background: none; }
+  footer { text-align: center; margin-top: 56px; color: #6e6350; font-style: italic; font-size: 14.5px; }
+  footer::before { content: "✦ ✦ ✦"; display: block; font-style: normal; font-size: 9px; letter-spacing: 8px; color: #56462a; margin-bottom: 12px; }
+  footer .attribution { font-size: 13px; }
+  a { color: var(--gold-bright); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>Kronspiel</h1>
+  <div class="report-title">The Opening Book</div>
+  <p class="tagline">Being a trial of the five named openings of §8 — and the discovery of the Throne Road.</p>
+</header>
+
+<div class="ornament"><span>✦ ✦ ✦</span></div>
+
+<h2><span class="num">I.</span>The Question</h2>
+<p>The rulebook names five openings, written for <em>Den of Snakes</em> before any engine had ever played the game. The Designer asks: are they good, or period-appropriate folly? What does Kronspiel actually <em>look like</em> in its first moves? And are there other openings worth a name?</p>
+
+<h2><span class="num">II.</span>The Method</h2>
+<p>Three instruments, all built on the game's own engine:</p>
+<ul>
+  <li><strong>The Oracle</strong> — a 90-second deep search scoring every legal move from a position. Scores are in hundredths of a Bürger; +100 is roughly a pawn to the good.</li>
+  <li><strong>Book trials</strong> — 24 games per named opening in which the Bone Court is forced to play the scripted line (as long as it stays legal) against a free-thinking opponent, compared with a 48-game free-play control in which Bone won 48%.</li>
+  <li><strong>Field mining and confirmation</strong> — the control games' movelists mined for what strong play actually chooses, then the leading candidate first moves re-tested at 20 forced games apiece.</li>
+</ul>
+<p class="caveat">Caveats: 20–24 games resolves the big differences, not the small ones — treat anything within ±10 points of the control as level. And engines are immune to theatre: an opening whose value lives in deceiving a person will test worse here than it plays at a real table. That cuts exactly where you will suspect it cuts.</p>
+
+<h2><span class="num">III.</span>What the Opening Is, in Kronspiel</h2>
+<div class="card">
+  <p style="margin-top:0">The Oracle's verdict on the starting position is a study in flatness: 39 legal first moves and barely half a Bürger between the best of them and the worst. This is the rulebook's own §6 made measurable — with every Krone walled in by his own full court, <em>no early attack can touch what matters</em>. Isolation is a mid-game reckoning, and the opening is therefore about position, not tactics.</p>
+  <p style="margin-bottom:0">So Kronspiel has <strong>opening principles, not opening theory</strong>. The study's sharpest demonstration: taking the strongest first move and then forcing even the Oracle's own preferred <em>second</em> move cost the entire measured advantage (70% → 50%). Scripts die on contact; principles survive. For a game invented for a book about courts and spies, that is a very on-theme property: the memorised line is worth less than the judgment behind it.</p>
+</div>
+
+<h2><span class="num">IV.</span>The Five Named Openings, on Trial</h2>
+<p>Bone plays each line by the book against a free opponent; the free-play control is 48%. “Eval after book” is the Oracle's material-and-position judgment once the last scripted move is played.</p>
+
+<div class="table-scroll">
+<table>
+  <tr><th>Opening</th><th>Bone wins</th><th class="r">Eval after book</th><th class="r">Median game</th><th>Line survived?</th></tr>
+  <tr><td class="vname">The Closed Gate</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:54%"></div><div class="mark" style="left:48%"></div></div><span class="val">54%</span></div></td>
+    <td class="r meh">−87</td><td class="r">64 mv</td><td>All 5 moves, every game</td></tr>
+  <tr><td class="vname">The Ashen Approach</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:50%"></div><div class="mark" style="left:48%"></div></div><span class="val">50%</span></div></td>
+    <td class="r good">+9</td><td class="r">45 mv</td><td>All 5 moves, every game</td></tr>
+  <tr><td class="vname">The Sigismund Gambit</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:33%"></div><div class="mark" style="left:48%"></div></div><span class="val">33%</span></div></td>
+    <td class="r bad">−190</td><td class="r">53 mv</td><td>All 3 moves, every game</td></tr>
+  <tr><td class="vname">The Drowned Flank</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:25%"></div><div class="mark" style="left:48%"></div></div><span class="val">25%</span></div></td>
+    <td class="r bad">−222</td><td class="r">42 mv</td><td>All 5 moves, every game</td></tr>
+  <tr><td class="vname">The Beggar's Gate</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:33%"></div><div class="mark" style="left:48%"></div></div><span class="val">33%</span></div></td>
+    <td class="r bad">−250</td><td class="r">59 mv</td><td>Broke by move 3–4 in most games</td></tr>
+</table>
+</div>
+<p class="caveat">The pale tick on each bar marks the 48% free-play control.</p>
+
+<h3>The Ashen Approach <span class="verdict-tag tag-sound">Sound</span></h3>
+<p>Dead level after the book (+9) and dead level in results. The lore says it “wins more often than courtiers like to admit,” and the engine agrees it concedes nothing at all — the only named opening that finishes its script at material and positional par. Tedious to watch, impossible to punish. The Ecclesia would be pleased.</p>
+
+<h3>The Closed Gate <span class="verdict-tag tag-sound">Sound</span></h3>
+<p>The orthodox choice performs exactly as orthodoxy should: slightly passive by the Oracle's count (−87, the cost of spending five tempi on fortification), but the best win rate of the five in practice. A fine default, and a safe thing for a character to play when they wish to reveal nothing — which is, of course, its stated purpose.</p>
+
+<h3>The Sigismund Gambit <span class="verdict-tag tag-lore">True to its lore</span></h3>
+<p>Down nearly two Bürger of value by the end of its own script, winning a third of its games. The rulebook calls it “blunt, costly, and prone to failure against anyone patient enough to let it exhaust itself” — the engine's numbers are that sentence, translated. This is not a flaw in the design; it is characterisation. A soldier's opening should lose to a spymaster.</p>
+
+<h3>The Drowned Flank <span class="verdict-tag tag-cost">Costly — needs a believer</span></h3>
+<p>The worst tested result (25%), and the most instructive failure. The Drowned Flank is a <em>feint</em>, and a feint's value lives entirely in the opponent's belief. An engine does not believe anything; it counts. Against a calculator the wing demonstration is simply five tempi and a loose Marschall. At a human table, against a player who commits their defence to the wrong wing, none of this arithmetic applies — which is precisely why “people who have lost to it” resent it. Keep the lore; just know the trick has a floor.</p>
+
+<h3>The Beggar's Gate <span class="verdict-tag tag-cost">A true gambit</span></h3>
+<p>Genuinely a sacrifice (−250 after book), and the only line the opponent can physically interrupt — in most games the script broke by move 3, the free defender declining to cooperate with the pawn offers. It wins a third of its games anyway, and its games run long: the compensation is real but slow, exactly as §8 describes — the pattern pays off only “by the time it is recognised.” Unsound against precise defence, dangerous against everyone else. That is what a beggar's weapon should be.</p>
+
+<h2><span class="num">V.</span>The Discoveries</h2>
+
+<div class="card verdict">
+  <h3 style="margin-top:0">The Throne Road — 1. f2–f5 <span class="verdict-tag tag-sound">The strongest tested move</span></h3>
+  <p>The new Bürger triple-dash, played up the one file on the board that runs into the Aschenstuhl. It was the Oracle's top-rated first move, and in forced trials it scored <strong>70% (14–6)</strong> with the fastest games of the whole study — a median of 27 moves against 45 for free play. The engine repeatedly found it, and no other first move beat the control by more than noise.</p>
+  <p>Why this square? Three reasons, in order of subtlety:</p>
+  <ol>
+    <li>The Bürger arrives at the foot of the empty throne, one step from the side-step squares e6 and g6 — the only diagonal walk in the game.</li>
+    <li><strong>f2 is the one square whose vacancy opens a diagonal for both Kanzler at once.</strong> The Oracle's preferred follow-up is immediate: a Kanzler out through the window to e3 or g3. One commoner's march, and both counsellors see daylight.</li>
+    <li>It concedes nothing: the pawn on f5 is hard to profitably attack, and the Aschenstuhl shields the file beyond it.</li>
+  </ol>
+  <p style="margin-bottom:0">Two warnings from the same analysis: taking the side-step at once (f5–e6 before developing) rates poorly — the Road is a development plan, not a pawn raid — and deep Kanzler sorties into enemy territory score <em>negative</em>. The window is for looking through, not leaping through.</p>
+</div>
+
+<h3>The Far Door — the universal reply f10–f7</h3>
+<p>Against the Throne Road (and nearly everything else), the defence the search converges on is the mirror dash: Ash's f-Bürger to f7, claiming the far side of the throne before the Road's pilgrim can round it. The two central Bürger then stare at each other across the Aschenstuhl — a genuinely distinctive opening picture that no other board game quite produces. Worth naming, because every strong game of Kronspiel will pass through it.</p>
+
+<h3>The lesser roads</h3>
+<ul>
+  <li><strong>e2–e5 and g2–g5</strong> — the flanking dashes, each opening one Prälat's window instead of the double Kanzler window. Tested level with the control (55% and 40%, pooled ≈ par). Honest, slightly quieter siblings of the Road.</li>
+  <li><strong>The wing dashes j2–j5, k2–k4</strong> — the Oracle rates them nearly equal to the Road at the root, but in play they earned exactly nothing (50%). The tempo arrives on a wing where no siege will ever be laid.</li>
+  <li><strong>A trap worth recording:</strong> after 1. f2–f5, the Oracle scores Ash's mirror <em>wing</em> dashes (a10–a7, k10–k7) as outright blunders — some 1½ Bürger worse than the Far Door. The one early mistake the opening allows is answering the centre with the edge.</li>
+</ul>
+
+<h3>Die Flucht is half the game</h3>
+<p>In the free-play control, <strong>a Krone spent Die Flucht in 24 of 48 games</strong>. The once-per-game escape is not a curiosity; it is a live resource in every second game, and its mere availability shapes the opening — every early Krone move permanently spends it. A finding worth a sentence in §7: good players treat the unspent Flucht as a piece in hand.</p>
+
+<h2><span class="num">VI.</span>Counsel for the Designer</h2>
+<ol>
+  <li><strong>The five names survive contact with the engine — as literature and as design.</strong> The two “respectable” openings test sound; the three disreputable ones test unsound <em>in exactly the manner their own descriptions promise</em>. A rulebook whose flavour text is quantitatively honest is a rare and pleasing thing. Change nothing.</li>
+  <li><strong>Consider adding the Throne Road and the Far Door to §8</strong> as the modern main line — the opening a Kaltmann or a Sigismund-trained player would know cold. Suggested register: <em>“The Throne Road — the commoner's march to the foot of the empty chair, favoured since the reach rule entered the rulebook. Its refutation has not been found; its imitators on the wings have found nothing at all.”</em></li>
+  <li><strong>Let the fiction exploit the Drowned Flank's true nature:</strong> it is the one opening whose strength depends on the opponent's credulity — a purpose-built scene where a character wins with an objectively bad opening, or loses by trusting one.</li>
+  <li><strong>Opening principles for the primer, if wanted:</strong> dash a centre Bürger; open a counsellor's window and use it modestly; meet the dash at the Far Door; never answer the centre with the edge; and spend Die Flucht like gold, because half of all games are decided with it in hand or in flight.</li>
+</ol>
+
+<h2><span class="num">VII.</span>Appendix — Reproducing the Study</h2>
+<pre><code>node sim/gen-variants.mjs                          # build the analysis engine
+node sim/openings.mjs analyze [moves…]             # the Oracle (e.g. analyze f2-f5)
+node sim/openings.mjs book &lt;opening&gt; 24 11000      # closedgate | sigismund | ashen | drowned | beggars
+node sim/openings.mjs free 24 12000 -a             # free-play control
+node sim/openings.mjs first f2-f5 20 13000         # forced first move
+node sim/openings.mjs line name "f2-f5,e1-g3" 20   # any scripted line</code></pre>
+<p>Every game is seeded and reproducible; movelists are recorded in full in <code>sim/out/op-*.jsonl</code>.</p>
+
+<footer>
+  <p>“Even a common man finds his way around an empty chair, when the alternative is standing before it forever.”</p>
+  <p class="attribution">Prepared for the Designer by Claude (Fable 5) · 328 games and three oracles · August 2026 · companion to <a href="sim_results.html">the Rules Commission</a></p>
+</footer>
+
+</div>
+</body>
+</html>
