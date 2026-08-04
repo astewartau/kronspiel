@@ -3,7 +3,7 @@
 // to make a specific move (making it advances).
 
 import {
-  N, idx, initialState,
+  N, idx, initialState, genLegal, apply,
   KRONE, MARSCHALL, GESANDTER, BURGER,
   BONE, ASH,
 } from './engine.js';
@@ -11,8 +11,10 @@ import {
 export const sqOf = (name) => idx(parseInt(name.slice(1), 10) - 1, name.charCodeAt(0) - 97);
 const P = (name, type, side) => [sqOf(name), type * side];
 
-// setup: 'initial' | { pieces, turn, flucht } | null (keep the board as it stands)
+// setup: 'initial' | { pieces, turn, flucht } | { initial: true, moves } |
+//        null (keep the board as it stands)
 // expect: { from, to: [names] | null, hint } — the move the lesson waits for
+// arrows: [[from, to], …] — gold sightlines drawn on the board for the lesson
 export const LESSONS = [
   {
     title: 'Welcome to the Table',
@@ -51,6 +53,7 @@ export const LESSONS = [
       turn: BONE,
     },
     escapes: true,
+    arrows: [['c8', 'c4']],
   },
   {
     title: 'A Wall of His Own Men',
@@ -91,6 +94,7 @@ export const LESSONS = [
       + 'kill the messenger; the message has already arrived.',
     setup: null,
     escapes: true,
+    arrows: [['b9', 'a11']],
   },
   {
     title: 'Idle Gestures',
@@ -128,10 +132,42 @@ export const LESSONS = [
     expect: { from: 'f5', to: ['e6', 'g6'], hint: 'Step diagonally onto e6 or g6 — around the empty throne.' },
   },
   {
+    title: 'The Rising',
+    text: 'A Bürger who crosses the whole board rises — but only ever to a Gesandter. A common man '
+      + 'may serve power closely; he may never become it. Your Bürger stands one step from the far '
+      + 'rank. March him home and watch him take the spymaster’s cloak.',
+    setup: {
+      pieces: [P('d10', BURGER, BONE), P('b1', KRONE, BONE), P('k11', KRONE, ASH)],
+      turn: BONE,
+    },
+    expect: { from: 'd10', to: ['d11'], hint: 'One more step — d11, and the cloak.' },
+  },
+  {
+    title: 'The Fool’s Gate',
+    text: 'One famous miniature before you go — every child of the capital is shown it once. '
+      + 'Bone opened with the Bürger’s dash to f5, and Ash answered f10–f9: one step, not three. '
+      + 'It looks careful. It is fatal — that pawn now stands on his own Krone’s escape road. '
+      + 'Both your Kanzler see through the window the dash opened. Send one across the whole '
+      + 'board: e1 to j6.',
+    setup: { initial: true, moves: ['f2-f5', 'f10-f9'] },
+    marks: ['f9'],
+    expect: { from: 'e1', to: ['j6'], hint: 'Slide the Kanzler the full diagonal — e1 to j6. (g1–b6 would mirror it.)' },
+  },
+  {
+    title: 'The Door Is Bolted',
+    text: 'Look at the Ash Krone’s standing: every neighbour is his own court, and the one empty '
+      + 'door — f10 — your Kanzler claims from ten squares away. His Flucht? Blocked by his own '
+      + 'careful pawn on f9. Isolation is judged at the start of his turn, before any piece may '
+      + 'act: the game ended on move two. Dash fully or not at all — and mind whose road your '
+      + 'pawns stand on.',
+    setup: null,
+    escapes: true,
+    arrows: [['j6', 'f10']],
+  },
+  {
     title: 'Go Forth',
-    text: 'One last thing: a Bürger who crosses the whole board rises — but only ever to a Gesandter. '
-      + 'A common man may serve power closely; he may never become it. That is the whole of the game: '
-      + 'guard your doors, crowd the enemy’s, and never trust a full court room. '
+    text: 'That is the whole of the game: guard your doors, crowd the enemy’s, spend Die Flucht '
+      + 'like gold, and never trust a full court room. '
       + 'Leave the Primer when you are ready, and play.',
     setup: null,
   },
@@ -139,6 +175,18 @@ export const LESSONS = [
 
 export function buildTutState(setup) {
   if (setup === 'initial') return initialState();
+  if (setup.initial) {
+    // The standard opening position with a few plies already played.
+    let s = initialState();
+    for (const txt of setup.moves || []) {
+      const from = sqOf(txt.slice(0, txt.indexOf('-')));
+      const to = sqOf(txt.slice(txt.indexOf('-') + 1));
+      const m = genLegal(s).find((x) => x.from === from && x.to === to);
+      if (!m) throw new Error('Primer: illegal scripted move ' + txt);
+      s = apply(s, m);
+    }
+    return s;
+  }
   const board = new Int8Array(N * N);
   for (const [s, v] of setup.pieces) board[s] = v;
   return {

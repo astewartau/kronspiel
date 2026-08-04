@@ -300,18 +300,48 @@
 
 <h3>Palsied Court — the surprise of the study <span class="verdict-tag tag-avoid">Advise against</span></h3>
 <p>The armchair case was strong: make zugzwang a weapon and cages convert. The table said otherwise. Once <em>both</em> searches understood the rule, the defenders respected it more than the attackers could exploit it — they kept their Krone scrupulously clear of enemy touch, entrenched early, and the games ballooned: median 90 moves, 79% slogs, and one game in five still unresolved at move 180. Not a single palsy win actually converted. The threat taught the defence fortress-craft and gave the attack nothing it could cash. A rule meant to end sieges instead prolonged them.</p>
+<kron-demo label="The Palsied Court — the position on trial"
+  setup='{"turn":"ash","pieces":[["b11","KRONE","ash"],["a10","BURGER","ash"],["f1","KRONE","bone"],["b1","MARSCHALL","bone"],["a9","BURGER","bone"],["c10","BURGER","bone"],["d9","BURGER","bone"],["c11","PRALAT","bone"],["e10","GESANDTER","bone"]]}'>
+  <script type="application/json">{
+    "0": { "note": "Ash to move — and Ash has no legal move at all (engine-verified). The green door at a11 is real, but stepping onto it is self-isolation, which the rules forbid; the Bürger is blocked; every wall square is defended. Not isolated, merely paralysed. The current rules call this a draw — the Frozen Court. The Palsied Court variant calls it a loss, since the enemy's hand is on the walls. The deep trials showed what that threat does: defenders learn never to enter such rooms, and the sieges grow longer, not shorter.",
+      "doors": "ash", "arrows": ["b1-b10", "e10-c11"] }
+  }</script>
+</kron-demo>
 
 <h3>Loose Touch, alone — the rush returns <span class="verdict-tag tag-avoid">Advise against</span></h3>
 <p>Reverting Isolation to the old, looser touch rule produced the fastest games of the study (median 28 moves) and full decisiveness — and it also produced a <strong>2-move win at depth 5</strong>. The rush is not a novice's trap that strong play refutes; under loose touch it is simply sound. The strict rule is earning its keep, and this measurement is the proof.</p>
+<kron-demo label="One Position, Two Rulebooks"
+  setup='{"turn":"ash","pieces":[["a11","KRONE","ash"],["a10","BURGER","ash"],["b10","BURGER","ash"],["b11","MARSCHALL","ash"],["f1","KRONE","bone"],["b1","MARSCHALL","bone"]]}'>
+  <script type="application/json">{
+    "0": { "note": "The whole dispute in six pieces. The Ash Krone is walled entirely by his own court; the Bone Marschall bears down the file at the occupied b10. Under the STRICT rule (painted): a threat against a filled square counts for nothing — that door was never going to open for him — so Ash is safe, and free to unstack. Under the LOOSE rule, that same threat is a siege, and this position is already lost before Ash may move. The strict reading killed the two-move rush; the loose reading is what let it exist.",
+      "doors": "ash", "arrows": ["b1-b10"], "marks": ["b10"] }
+  }</script>
+</kron-demo>
 
 <h3>Loose + the Truce of Accession — the honourable compromise <span class="verdict-tag tag-keep">Worth a human trial</span></h3>
 <p>Forbid Isolation before move 6, and the rush dies (one kill in 104 games landed at move 6 exactly — the instant the truce lifts, which argues for setting it a move or two later) while decisiveness stays perfect. But note what did <em>not</em> happen: the hoped-for faster endgame never materialised — with the truce absorbing the early kills, median length landed at 56 moves, indistinguishable from baseline. So this package is a <em>sidegrade</em>, not a cure: the sharper old endgame rule, rush-proofed. If the strict rule ever starts to feel unsatisfying at the table — walls that “should” count but don't — this is the tested alternative. It is not, on this evidence, a pace fix.</p>
 
 <h3>Hollow Crown — untested by its nature, cheap by its nature <span class="verdict-tag tag-adopt">Adopt as insurance</span></h3>
 <p>The simulation can neither convict nor acquit this rule, and the reason is instructive: <em>the AI never plays the strategy it punishes.</em> An engine defending on evaluation does not shed its whole court to run — but a losing human does, because under current rules bare-and-running is a genuine path to the Long Winter draw. Hollow Crown closes that path. In 104 games it showed no side effects — lengths and decisive rates tracked baseline within noise. A rule that costs nothing when it is silent and only speaks against the one degenerate strategy is good insurance.</p>
+<kron-demo label="The Strategy It Punishes"
+  setup='{"turn":"ash","pieces":[["f7","KRONE","ash"],["f1","KRONE","bone"],["c3","MARSCHALL","bone"],["h2","PRALAT","bone"],["d2","BURGER","bone"],["e2","BURGER","bone"],["g2","BURGER","bone"]]}'
+  moves="f7-e8 c3-c8 e8-d9 h2-f4 d9-e10 f4-h6">
+  <script type="application/json">{
+    "0": "The shed-and-run endgame: Ash has traded away his entire court and simply walks. Catching a lone Krone in open ground takes many moves — and under the current rules, fifty quiet ones make it a draw.",
+    "2": "Bone gives chase; the fugitive drifts on. Every check-less pursuit takes this shape — herd, never drive.",
+    "6": { "note": "Six plies of running, and the cage is no closer. Under current rules this can continue to the Long Winter. Under the Hollow Crown, the reign has a clock: a Krone whose court is entirely lost falls after his tenth bare turn — running while your court dies stops being a strategy.", "doors": "ash" }
+  }</script>
+</kron-demo>
 
 <h3>Advancing Winter — right instinct, wrong blade <span class="verdict-tag tag-redo">Redesign before trial</span></h3>
 <p>As implemented — rings freezing on a fixed schedule, devouring whatever stands on them — the winter <em>truncated</em> games rather than converging them. It claimed roughly eight pieces a game, manufactured empty-court draws (both armies eaten), and pushed decisiveness down to 83–86%, the worst of the study. The instinct is still sound: a closing board is the one mechanism that <em>guarantees</em> an ending. But it should advance only when the game is actually stalling (tie it to the quiet-move clock, not the move number), it should advance slowly, and it should probably drive pieces before it rather than devour them. That version deserves its own study.</p>
+<kron-demo label="Move 30 — the First Ring Freezes"
+  setup='{"turn":"bone","pieces":[["e1","KRONE","bone"],["i2","BURGER","bone"],["d3","BURGER","bone"],["e3","BURGER","bone"],["g3","BURGER","ash"],["j3","BURGER","bone"],["b4","BURGER","bone"],["c5","BURGER","bone"],["g6","BURGER","bone"],["c7","KANZLER","bone"],["d7","BURGER","ash"],["i7","BURGER","ash"],["f8","BURGER","ash"],["j8","BURGER","ash"],["d9","PRALAT","ash"],["g9","MARSCHALL","ash"],["c10","BURGER","ash"],["g10","BURGER","ash"],["h10","BURGER","ash"],["i10","KANZLER","ash"],["j10","MARSCHALL","ash"],["d11","KRONE","ash"]]}'>
+  <script type="application/json">{
+    "0": { "note": "A real position from the study at move 30, the instant the variant's first ring froze. Twelve pieces — the entire outer files and ranks — are claimed by the ice in one stroke; only the two Krone are spared, each left standing on a pocket of bare ice. This is the diagnosis in a single picture: a winter on a fixed schedule doesn't besiege the game, it amputates it. The redesign advances only when the quiet-move clock says the game has stalled — and drives pieces inward instead of devouring them.",
+      "frozenRings": [0] }
+  }</script>
+</kron-demo>
 
 <h3>A note on the first move</h3>
 <p>Across the study's 691 decisive games, the Bone Court (moving first) won about 56%. A mild edge, consistent across regimes — worth remembering if tournament play ever matters, and cheaply cured at the table by playing pairs of games with colours swapped.</p>

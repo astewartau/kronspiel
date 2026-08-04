@@ -20,12 +20,22 @@
 // Attributes: moves (space-separated from-to), label (optional heading),
 // flip (optional; view from Ash's side). Annotations are keyed by ply count.
 // Notes are sticky between keys; doors/arrows/marks apply only at their step.
+//
+// A staged position (for diagrams that no legal opening reaches) goes in a
+// `setup` attribute; with no moves at all, the element renders as a plain
+// diagram without controls:
+//   <kron-demo setup='{"turn":"ash","pieces":[["b11","KRONE","ash"], ...]}'>
+// Winter-variant diagrams may add {"frozenRings":[0]} to a step to paint the
+// outermost ring(s) as taken by the winter.
 
 import {
   N, ASCH, EMPTY, idx, rowOf, colOf,
+  KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER,
   initialState, genLegal, apply, isolationInfo, sqName, BONE, ASH,
 } from './engine.js';
 import { pieceHTML } from './pieces.js';
+
+const TYPES = { KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER };
 
 const CSS = `
   :host {
@@ -83,6 +93,10 @@ const CSS = `
   .sq.door-own   { box-shadow: inset 0 0 0 2.5px rgba(154,143,124,0.65); }
   .sq.door-krone { box-shadow: inset 0 0 0 2.5px rgba(232,201,106,0.95), inset 0 0 14px rgba(200,162,74,0.45); }
   .sq.mark       { box-shadow: inset 0 0 0 2px rgba(232,201,106,0.85), inset 0 0 10px rgba(200,162,74,0.3); }
+  .sq.frozen, .sq.frozen.bone, .sq.frozen.ash {
+    background: linear-gradient(145deg, #2b3138 0%, #20262d 55%, #181d23 100%);
+    box-shadow: inset 0 0 10px rgba(150, 180, 210, 0.12), inset 0 0 0 1px rgba(150, 180, 210, 0.08);
+  }
   .piece { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; }
   .piece.slide { transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.35, 1); }
   .piece.just-moved svg.sigil { animation: landed 0.45s ease; }
@@ -182,8 +196,27 @@ class KronDemo extends HTMLElement {
       } catch { /* ignore bad notes */ }
     }
 
+    // Starting position: standard, or a staged diagram from `setup`.
+    let start = initialState();
+    const setupAttr = this.getAttribute('setup');
+    if (setupAttr) {
+      try {
+        const su = JSON.parse(setupAttr);
+        const board = new Int8Array(N * N);
+        for (const [name, type, side] of su.pieces) {
+          board[this.sqOf(name)] = TYPES[type] * (side === 'ash' ? ASH : BONE);
+        }
+        start = {
+          board,
+          turn: su.turn === 'ash' ? ASH : BONE,
+          flucht: { [BONE]: !!su.flucht?.bone, [ASH]: !!su.flucht?.ash },
+          clock: 0, reps: {}, ply: 0,
+        };
+      } catch (e) { console.warn('<kron-demo> bad setup:', e); }
+    }
+
     // Replay the move list through the engine, keeping every state.
-    this.states = [initialState()];
+    this.states = [start];
     this.played = []; // {from, to, side, capture}
     for (const txt of (this.getAttribute('moves') || '').trim().split(/\s+/).filter(Boolean)) {
       const mm = txt.match(/^([a-k])(\d+)-([a-k])(\d+)$/);
@@ -294,9 +327,18 @@ class KronDemo extends HTMLElement {
       }
     }
     const marks = new Set((anno.marks || []).map((n) => this.sqOf(n)));
+    const frozen = new Set();
+    for (const ring of anno.frozenRings || []) {
+      for (let r = ring; r < N - ring; r++) {
+        for (let c = ring; c < N - ring; c++) {
+          if (r === ring || r === N - 1 - ring || c === ring || c === N - 1 - ring) frozen.add(idx(r, c));
+        }
+      }
+    }
 
     for (const el of this.sqEls) {
-      el.classList.remove('from', 'to', 'door-open', 'door-enemy', 'door-own', 'door-krone', 'mark');
+      el.classList.remove('from', 'to', 'door-open', 'door-enemy', 'door-own', 'door-krone', 'mark', 'frozen');
+      if (frozen.has(+el.dataset.sq)) el.classList.add('frozen');
       const sq = +el.dataset.sq;
       if (last && sq === last.from) el.classList.add('from');
       if (last && sq === last.to) el.classList.add('to');
@@ -351,7 +393,9 @@ class KronDemo extends HTMLElement {
         <polygon points="${bx},${by} ${hx + px},${hy + py} ${hx - px},${hy - py}"/>`;
     }
 
-    if (!last) {
+    if (this.played.length === 0) {
+      this.readoutEl.parentElement.style.display = 'none';
+    } else if (!last) {
       this.readoutEl.textContent = 'Start position';
     } else {
       const n = Math.ceil(this.k / 2);

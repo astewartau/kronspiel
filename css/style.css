@@ -563,6 +563,12 @@ h1 {
   z-index: 2;
 }
 
+/* Primer sightline arrows, drawn into the marks layer */
+.marks-layer svg.tut-arrows { position: absolute; inset: 0; width: 100%; height: 100%; }
+svg.tut-arrows line { stroke: rgba(232, 201, 106, 0.85); stroke-width: 1.1; }
+svg.tut-arrows .halo line { stroke: rgba(200, 162, 74, 0.3); stroke-width: 2.6; }
+svg.tut-arrows polygon { fill: rgba(232, 201, 106, 0.85); }
+
 .piece {
   position: absolute;
   width: calc(100% / 11);

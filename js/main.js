@@ -206,6 +206,8 @@ function paint() {
     if (el) el.classList.add('krone-warn');
   }
 
+  paintTutArrows();
+
   paintBars();
   paintStatus();
   paintControls();
@@ -791,6 +793,35 @@ function tutAllows(m) {
   if (!exp) return false;
   if (m.from !== sqOf(exp.from)) return false;
   return !exp.to || exp.to.some((name) => sqOf(name) === m.to);
+}
+
+// Gold sightline arrows for Primer lessons, drawn into the marks layer.
+function paintTutArrows() {
+  const marksEl = $('marks');
+  let svg = marksEl.querySelector('svg.tut-arrows');
+  const arrows = (tut && LESSONS[tut.step]?.arrows) || [];
+  if (!arrows.length) { svg?.remove(); return; }
+  if (!svg) {
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'tut-arrows');
+    svg.setAttribute('viewBox', '0 0 110 110');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    marksEl.appendChild(svg);
+  }
+  svg.innerHTML = arrows.map(([f, t]) => {
+    const A = sqToDisp(sqOf(f)), B = sqToDisp(sqOf(t));
+    const ax = A.dc * 10 + 5, ay = A.dr * 10 + 5;
+    let bx = B.dc * 10 + 5, by = B.dr * 10 + 5;
+    const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    bx -= ux * 3.4; by -= uy * 3.4;
+    const head = 2.4;
+    const hx = bx - ux * head, hy = by - uy * head;
+    const px = -uy * head * 0.6, py = ux * head * 0.6;
+    return `<g class="halo"><line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"/></g>` +
+      `<line x1="${ax}" y1="${ay}" x2="${hx}" y2="${hy}"/>` +
+      `<polygon points="${bx},${by} ${hx + px},${hy + py} ${hx - px},${hy - py}"/>`;
+  }).join('');
 }
 
 function tutMarkSet() {
