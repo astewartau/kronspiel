@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kronspiel — The Rules Commission</title>
+<meta name="description" content="AI-vs-AI simulation study of proposed Kronspiel rule variants: methods, results, and counsel.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>♚</text></svg>">
+<style>
+  :root {
+    --bg: #0f0d0b; --bg-2: #16130f; --panel: #1c1813; --panel-edge: #2e2820;
+    --ink: #d8cfbe; --ink-dim: #9a8f7c;
+    --gold: #c8a24a; --gold-bright: #e8c96a; --gold-pale: #f2dfa0; --gold-deep: #7a5f28;
+    --ember: #b8442f; --ember-soft: #d06a4a; --green: #6f9e5f;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(1200px 700px at 50% -10%, #262015 0%, transparent 60%),
+      radial-gradient(900px 600px at 90% 110%, #1c150d 0%, transparent 55%),
+      var(--bg);
+    color: var(--ink);
+    font-family: "EB Garamond", Georgia, serif;
+    font-size: 17.5px;
+    line-height: 1.6;
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    background: radial-gradient(120% 90% at 50% 30%, transparent 60%, rgba(4,3,1,0.4) 100%);
+  }
+  .page { position: relative; z-index: 2; max-width: 880px; margin: 0 auto; padding: 40px 22px 60px; }
+
+  header { text-align: center; margin-bottom: 8px; }
+  h1 {
+    font-family: "Cinzel Decorative", "Cinzel", serif;
+    font-size: clamp(30px, 5.4vw, 46px);
+    letter-spacing: 0.12em; margin: 0;
+    background: linear-gradient(105deg, var(--gold-deep) 0%, var(--gold) 28%, var(--gold-pale) 50%, var(--gold) 72%, var(--gold-deep) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 18px rgba(200,162,74,0.22));
+  }
+  .report-title {
+    font-family: "Cinzel", serif; font-size: clamp(17px, 2.6vw, 22px);
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold);
+    margin: 14px 0 4px;
+  }
+  .tagline { font-style: italic; color: var(--ink-dim); margin: 2px 0 0; }
+  .ornament { display: flex; align-items: center; gap: 14px; margin: 26px 0; }
+  .ornament::before, .ornament::after {
+    content: ""; flex: 1; height: 1px;
+    background: linear-gradient(90deg, transparent, #8a6d2e);
+  }
+  .ornament::after { background: linear-gradient(90deg, #8a6d2e, transparent); }
+  .ornament span { color: var(--gold); font-size: 13px; letter-spacing: 6px; }
+
+  h2 {
+    font-family: "Cinzel", serif; font-size: 19px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--gold); margin: 44px 0 12px;
+  }
+  h2 .num { color: #8a6d2e; margin-right: 10px; }
+  h3 {
+    font-family: "Cinzel", serif; font-size: 15px; letter-spacing: 0.08em;
+    color: var(--gold-bright); margin: 24px 0 6px; font-weight: 600;
+  }
+  p { margin: 10px 0; }
+  em { color: var(--ink); }
+  strong { color: var(--gold-bright); font-weight: 600; }
+  ul, ol { margin: 8px 0; padding-left: 26px; }
+  li { margin: 5px 0; }
+
+  .card {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--panel-edge); border-radius: 4px;
+    padding: 18px 22px; margin: 18px 0; position: relative;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  }
+  .card::before {
+    content: ""; position: absolute; top: 0; left: 16px; right: 16px; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(200,162,74,0.55), transparent);
+  }
+  .card.verdict { border-color: #6a5a2f; }
+
+  blockquote {
+    margin: 16px 0; padding: 10px 20px;
+    border-left: 2px solid var(--gold-deep);
+    font-style: italic; color: var(--ink-dim);
+  }
+  blockquote .who { display: block; font-style: normal; font-size: 14px; color: #8a7040; margin-top: 6px; }
+
+  table {
+    width: 100%; border-collapse: collapse; margin: 14px 0;
+    font-size: 15.5px; font-variant-numeric: tabular-nums;
+  }
+  th {
+    font-family: "Cinzel", serif; font-size: 11.5px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-dim); font-weight: 600;
+    text-align: left; padding: 8px 10px; border-bottom: 1px solid #3a3226;
+  }
+  td { padding: 7px 10px; border-bottom: 1px solid #241f17; vertical-align: top; }
+  tr:nth-child(odd) td { background: rgba(255,244,214,0.02); }
+  td.r, th.r { text-align: right; }
+  .table-scroll { overflow-x: auto; }
+  .vname { font-family: "Cinzel", serif; font-size: 13.5px; letter-spacing: 0.04em; color: var(--gold-bright); white-space: nowrap; }
+  .good { color: var(--green); } .bad { color: var(--ember-soft); } .meh { color: var(--ink-dim); }
+
+  .bar { display: flex; align-items: center; gap: 8px; min-width: 130px; }
+  .bar .track { flex: 1; height: 9px; background: #241f17; border-radius: 5px; overflow: hidden; }
+  .bar .fill { height: 100%; background: linear-gradient(90deg, var(--gold-deep), var(--gold-bright)); border-radius: 5px; }
+  .bar .fill.ember { background: linear-gradient(90deg, #6e2a1c, var(--ember-soft)); }
+  .bar .val { font-size: 13.5px; color: var(--ink-dim); width: 38px; text-align: right; }
+
+  .verdict-tag {
+    display: inline-block; font-family: "Cinzel", serif; font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase; border-radius: 3px;
+    padding: 2px 10px; margin-left: 10px; vertical-align: 2px;
+  }
+  .tag-adopt { border: 1px solid #4c6b40; color: var(--green); }
+  .tag-keep  { border: 1px solid #6a5a2f; color: var(--gold-bright); }
+  .tag-avoid { border: 1px solid #7e352a; color: var(--ember-soft); }
+  .tag-redo  { border: 1px solid #4a3f2c; color: var(--ink-dim); }
+
+  .caveat { font-size: 15px; color: var(--ink-dim); font-style: italic; }
+  code, .mono {
+    font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+    font-size: 14px; background: #16120d; border: 1px solid #2e2820;
+    border-radius: 3px; padding: 1px 6px; color: var(--gold-pale);
+  }
+  pre { background: #16120d; border: 1px solid #2e2820; border-radius: 4px; padding: 12px 16px; overflow-x: auto; }
+  pre code { border: none; padding: 0; background: none; }
+
+  footer { text-align: center; margin-top: 56px; color: #6e6350; font-style: italic; font-size: 14.5px; }
+  footer::before { content: "✦ ✦ ✦"; display: block; font-style: normal; font-size: 9px; letter-spacing: 8px; color: #56462a; margin-bottom: 12px; }
+  footer .attribution { font-size: 13px; }
+  a { color: var(--gold-bright); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>Kronspiel</h1>
+  <div class="report-title">The Rules Commission</div>
+  <p class="tagline">Being a study, by simulation, of the Endgame Question — with counsel for the Designer.</p>
+</header>
+
+<div class="ornament"><span>✦ ✦ ✦</span></div>
+
+<h2><span class="num">I.</span>The Question</h2>
+<p>After the latest rulebook (Bürger reach, throne side-step, stricter Isolation, the uncapturable Krone), play at the table produced two observations:</p>
+<blockquote>
+  “Can't do a 2-move rush anymore — now best you can do is a 3-move rush, and there are more counters to it. Last game I did ran 47 turns before I gave up… I think it is actually rather difficult to isolate once the Krone has broken free of starting position.”
+  <span class="who">— the Designer, from the field</span>
+</blockquote>
+<p>Two questions follow. First: is the game <em>broken</em> — can a competent fugitive Krone simply never be caught? Second, and separately: is the game merely <em>slow</em>? And would any of the proposed remedies help without reopening the door to the opening rush?</p>
+
+<h2><span class="num">II.</span>The Four Suspicions</h2>
+<p>Before measuring anything, the structural case for why a free Krone is hard to catch:</p>
+<ol>
+  <li><strong>The door arithmetic.</strong> The defender needs one open door of eight; the attacker must close the last of them <em>in a single move</em>, because Isolation is judged at the start of the defender's turn and the defender repositions every turn in between.</li>
+  <li><strong>No forcing moves exist.</strong> There is no check. Chess mating nets work because check compels a reply; here the attacker can only herd, never drive.</li>
+  <li><strong>Zugzwang is a draw.</strong> If every defending move would self-isolate, all are illegal — and the Frozen Court rule calls that a <em>draw</em>. The other classic mating tool leaks out through this hatch.</li>
+  <li><strong>The stricter touch rule cuts both ways.</strong> Threats against occupied squares now “count for nothing.” That is what killed the rush — but it also lets a Krone hug his own court more safely in the endgame.</li>
+</ol>
+
+<h2><span class="num">III.</span>The Method</h2>
+<p>An AI-vs-AI harness plays complete games under variant rules — the shipping game code is never modified; each variant runs against a patched copy of the engine. Both courts are played by the same searcher (iterative-deepening negamax, the game's own AI) with a small randomised tie-break so no two games repeat. Draws by repetition and the fifty-move winter are claimed automatically; games still alive at 180 full moves are recorded as <em>unfinished</em>.</p>
+<p>Two regimes:</p>
+<ul>
+  <li><strong>The Courtier's Table</strong> — shallow search (depth ≤ 3, 90 ms a move), 80 games per variant. A proxy for casual play, where blunders decide games.</li>
+  <li><strong>The Spymaster's Table</strong> — deep search (depth ≤ 5, 350 ms a move), 24 games per variant. A proxy for skilled play, where the fortress problem should live if it exists.</li>
+</ul>
+
+<h3>The variants on trial</h3>
+<div class="table-scroll">
+<table>
+  <tr><th>Variant</th><th>Rule under trial</th></tr>
+  <tr><td class="vname">Baseline</td><td>The current rulebook, unaltered. The control.</td></tr>
+  <tr><td class="vname">Palsied Court</td><td>A court with no legal move <em>while the Krone is under enemy touch</em> loses, instead of drawing. Zugzwang becomes the attacker's weapon. (The search was also taught to value this, on both sides.)</td></tr>
+  <tr><td class="vname">Hollow Crown</td><td>A Krone whose court is entirely gone falls after ten bare turns, unless the enemy is also bare. Punishes “shed everything and run.”</td></tr>
+  <tr><td class="vname">Small Hammers</td><td>Palsied Court and Hollow Crown together.</td></tr>
+  <tr><td class="vname">Loose Touch</td><td>The pre-update Isolation: enemy occupation of, or threats against, <em>any</em> adjacent square count toward the siege.</td></tr>
+  <tr><td class="vname">Loose + Truce</td><td>Loose Touch, but no Isolation may be declared before move 6 (“the Truce of Accession”).</td></tr>
+  <tr><td class="vname">Advancing Winter</td><td>The outermost unfrozen ring freezes solid at moves 30, 50 and 70. Frozen squares behave exactly as the Aschenstuhl; pieces caught on them are claimed by the winter (a Krone's square is spared).</td></tr>
+</table>
+</div>
+
+<p class="caveat">Caveats, honestly stated: 24 deep games per variant is a directional sample, not a tournament — treat single-digit percentage differences as noise. The AI was only taught the Palsied Court rule; it never <em>aims</em> for Hollow Crown wins, and never adopts the shed-and-run strategy that rule exists to punish. And an engine's fortress is not a human's fortress: these results measure the rules' mechanical tendencies, not their feel at a real table.</p>
+
+<h2><span class="num">IV.</span>The Results</h2>
+
+<h3>The Spymaster's Table — deep search, 24 games each</h3>
+<div class="table-scroll">
+<table>
+  <tr>
+    <th>Variant</th><th>Decisive</th><th class="r">Median length</th><th class="r">Slogs (>50 mv)</th><th class="r">Rushes (≤6 mv)</th><th>Endings</th>
+  </tr>
+  <tr>
+    <td class="vname">Baseline</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:100%"></div></div><span class="val">100%</span></div></td>
+    <td class="r">41 mv</td><td class="r meh">42%</td><td class="r good">0</td>
+    <td>24 isolation</td>
+  </tr>
+  <tr>
+    <td class="vname">Palsied Court</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:79%"></div></div><span class="val">79%</span></div></td>
+    <td class="r bad">90 mv</td><td class="r bad">79%</td><td class="r good">0</td>
+    <td>19 isolation · 5 unfinished · <em>0 palsy</em></td>
+  </tr>
+  <tr>
+    <td class="vname">Hollow Crown</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:92%"></div></div><span class="val">92%</span></div></td>
+    <td class="r">58 mv</td><td class="r meh">54%</td><td class="r meh">2</td>
+    <td>22 isolation · 2 unfinished · <em>0 hollow</em></td>
+  </tr>
+  <tr>
+    <td class="vname">Small Hammers</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:92%"></div></div><span class="val">92%</span></div></td>
+    <td class="r">56 mv</td><td class="r meh">50%</td><td class="r good">0</td>
+    <td>22 isolation · 1 unfinished · 1 siege</td>
+  </tr>
+  <tr>
+    <td class="vname">Loose Touch</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:100%"></div></div><span class="val">100%</span></div></td>
+    <td class="r good">28 mv</td><td class="r good">29%</td><td class="r bad">2</td>
+    <td>24 isolation — incl. a <strong>2-move win</strong></td>
+  </tr>
+  <tr>
+    <td class="vname">Loose + Truce</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:100%"></div></div><span class="val">100%</span></div></td>
+    <td class="r">56 mv</td><td class="r meh">50%</td><td class="r good">0</td>
+    <td>24 isolation</td>
+  </tr>
+  <tr>
+    <td class="vname">Advancing Winter</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:83%"></div></div><span class="val">83%</span></div></td>
+    <td class="r">33 mv</td><td class="r meh">38%</td><td class="r meh">1</td>
+    <td>20 isolation · 3 empty court · 1 siege</td>
+  </tr>
+</table>
+</div>
+
+<h3>The Courtier's Table — shallow search, 80 games each</h3>
+<div class="table-scroll">
+<table>
+  <tr>
+    <th>Variant</th><th>Decisive</th><th class="r">Median length</th><th class="r">Rushes (≤6 mv)</th><th>Endings</th>
+  </tr>
+  <tr><td class="vname">Baseline</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:99%"></div></div><span class="val">99%</span></div></td>
+    <td class="r">30 mv</td><td class="r meh">11</td><td>79 isolation · 1 siege</td></tr>
+  <tr><td class="vname">Palsied Court</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:96%"></div></div><span class="val">96%</span></div></td>
+    <td class="r">27 mv</td><td class="r meh">7</td><td>77 isolation · 2 siege · 1 unfinished</td></tr>
+  <tr><td class="vname">Hollow Crown</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:99%"></div></div><span class="val">99%</span></div></td>
+    <td class="r">32 mv</td><td class="r meh">6</td><td>77 isolation · 2 hollow · 1 siege</td></tr>
+  <tr><td class="vname">Small Hammers</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:95%"></div></div><span class="val">95%</span></div></td>
+    <td class="r">39 mv</td><td class="r meh">8</td><td>75 isolation · 3 siege · 1 hollow · 1 unfinished</td></tr>
+  <tr><td class="vname">Loose Touch</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:96%"></div></div><span class="val">96%</span></div></td>
+    <td class="r">25 mv</td><td class="r bad">16</td><td>77 isolation · 1 siege · 1 winter · 1 unfinished</td></tr>
+  <tr><td class="vname">Loose + Truce</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:99%"></div></div><span class="val">99%</span></div></td>
+    <td class="r">24 mv</td><td class="r good">1*</td><td>79 isolation · 1 unfinished</td></tr>
+  <tr><td class="vname">Advancing Winter</td>
+    <td><div class="bar"><div class="track"><div class="fill" style="width:86%"></div></div><span class="val">86%</span></div></td>
+    <td class="r">31 mv</td><td class="r good">3</td><td>69 isolation · 7 siege · 3 empty · 1 winter</td></tr>
+</table>
+</div>
+<p class="caveat">* the lone truce-era “rush” landed at move 6 exactly — the instant the truce lifts.</p>
+
+<h2><span class="num">V.</span>Reading the Results</h2>
+
+<div class="card verdict">
+  <h3 style="margin-top:0">The headline: the game is not broken — it is slow. <span class="verdict-tag tag-keep">Keep the rulebook</span></h3>
+  <p>Under the current rules, <strong>every single deep game ended in Isolation</strong> — one hundred percent decisive, no fortress held forever. The fugitive Krone <em>does</em> fall, even against equal, patient defence. What the simulation confirms instead is the pain: the median decisive game ran 41 moves, <strong>42% ran past 50 moves</strong>, and the longest ran 178. The 47-turn experience at the table is exactly the median-to-slog band of the current rules. The Endgame Question is a question of <em>pace</em>, not of possibility.</p>
+</div>
+
+<h3>Palsied Court — the surprise of the study <span class="verdict-tag tag-avoid">Advise against</span></h3>
+<p>The armchair case was strong: make zugzwang a weapon and cages convert. The table said otherwise. Once <em>both</em> searches understood the rule, the defenders respected it more than the attackers could exploit it — they kept their Krone scrupulously clear of enemy touch, entrenched early, and the games ballooned: median 90 moves, 79% slogs, and one game in five still unresolved at move 180. Not a single palsy win actually converted. The threat taught the defence fortress-craft and gave the attack nothing it could cash. A rule meant to end sieges instead prolonged them.</p>
+
+<h3>Loose Touch, alone — the rush returns <span class="verdict-tag tag-avoid">Advise against</span></h3>
+<p>Reverting Isolation to the old, looser touch rule produced the fastest games of the study (median 28 moves) and full decisiveness — and it also produced a <strong>2-move win at depth 5</strong>. The rush is not a novice's trap that strong play refutes; under loose touch it is simply sound. The strict rule is earning its keep, and this measurement is the proof.</p>
+
+<h3>Loose + the Truce of Accession — the honourable compromise <span class="verdict-tag tag-keep">Worth a human trial</span></h3>
+<p>Forbid Isolation before move 6, and the rush dies (one kill in 104 games landed at move 6 exactly — the instant the truce lifts, which argues for setting it a move or two later) while decisiveness stays perfect. But note what did <em>not</em> happen: the hoped-for faster endgame never materialised — with the truce absorbing the early kills, median length landed at 56 moves, indistinguishable from baseline. So this package is a <em>sidegrade</em>, not a cure: the sharper old endgame rule, rush-proofed. If the strict rule ever starts to feel unsatisfying at the table — walls that “should” count but don't — this is the tested alternative. It is not, on this evidence, a pace fix.</p>
+
+<h3>Hollow Crown — untested by its nature, cheap by its nature <span class="verdict-tag tag-adopt">Adopt as insurance</span></h3>
+<p>The simulation can neither convict nor acquit this rule, and the reason is instructive: <em>the AI never plays the strategy it punishes.</em> An engine defending on evaluation does not shed its whole court to run — but a losing human does, because under current rules bare-and-running is a genuine path to the Long Winter draw. Hollow Crown closes that path. In 104 games it showed no side effects — lengths and decisive rates tracked baseline within noise. A rule that costs nothing when it is silent and only speaks against the one degenerate strategy is good insurance.</p>
+
+<h3>Advancing Winter — right instinct, wrong blade <span class="verdict-tag tag-redo">Redesign before trial</span></h3>
+<p>As implemented — rings freezing on a fixed schedule, devouring whatever stands on them — the winter <em>truncated</em> games rather than converging them. It claimed roughly eight pieces a game, manufactured empty-court draws (both armies eaten), and pushed decisiveness down to 83–86%, the worst of the study. The instinct is still sound: a closing board is the one mechanism that <em>guarantees</em> an ending. But it should advance only when the game is actually stalling (tie it to the quiet-move clock, not the move number), it should advance slowly, and it should probably drive pieces before it rather than devour them. That version deserves its own study.</p>
+
+<h3>A note on the first move</h3>
+<p>Across the study's 691 decisive games, the Bone Court (moving first) won about 56%. A mild edge, consistent across regimes — worth remembering if tournament play ever matters, and cheaply cured at the table by playing pairs of games with colours swapped.</p>
+
+<h2><span class="num">VI.</span>Counsel</h2>
+<ol>
+  <li><strong>Change nothing in haste.</strong> The current rulebook is sound: rush-proof at depth, and every skilled game ends. The strict touch rule, in particular, survived its trial with distinction.</li>
+  <li><strong>Adopt Hollow Crown</strong> when convenient — it costs nothing against honest play and closes the shed-and-run draw against dishonest play. Suggested wording: <em>a Krone whose court is entirely lost falls after his tenth bare turn, unless the enemy court is also bare.</em></li>
+  <li><strong>Shelve Palsied Court.</strong> The simulation reversed the armchair verdict: it feeds the fortress instead of cracking it.</li>
+  <li><strong>Keep Loose + Truce in the drawer</strong> as the tested fallback if the strict rule ever feels wrong at a human table. Never adopt Loose Touch without the Truce.</li>
+  <li><strong>If pace still hurts after human play confirms it, the winter is the lever</strong> — but rebuilt: advancing on stall, not on schedule. Happy to run that study when the design is settled.</li>
+  <li><strong>Gather field data.</strong> The Chronicle's Copy button exports full game records; a handful of real 40-turn-plus games would show <em>where</em> human conversions stall, which no engine sample can.</li>
+</ol>
+
+<h2><span class="num">VII.</span>Appendix — Reproducing the Study</h2>
+<p>The harness lives in <code>sim/</code> beside the game. The shipping code is untouched; variants are generated as patched copies.</p>
+<pre><code>node sim/gen-variants.mjs                     # build patched engines
+node sim/run.mjs &lt;variant&gt; &lt;games&gt; &lt;seed&gt; [msPerMove] [depth] [label]
+node sim/run.mjs baseline 80 1000             # the Courtier's Table
+node sim/run.mjs baseline 24 5000 350 5 -deep # the Spymaster's Table
+node sim/summarize.mjs                        # the tables above</code></pre>
+<p>Variants: <code>baseline</code>, <code>frozenloss</code> (Palsied Court), <code>hollow</code>, <code>smallhammers</code>, <code>loose</code>, <code>loosetruce</code>, <code>winter</code>. Games are seeded and reproducible; results land in <code>sim/out/*.jsonl</code>, one line per game.</p>
+
+<footer>
+  <p>“You need not kill a king to finish him. You need only see that he has nowhere left to stand.”</p>
+  <p class="attribution">Prepared for the Designer by Claude (Fable 5), at the Bone Court's request · 728 games · August 2026</p>
+</footer>
+
+</div>
+</body>
+</html>
