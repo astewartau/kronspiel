@@ -758,6 +758,8 @@ function startTutorial() {
   $('tutor-card').classList.remove('hidden');
   tutAdvance();
   layoutBoard();
+  // On narrow layouts the sidebar sits below the board — bring the lesson into view.
+  $('tutor-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function tutAdvance() {
