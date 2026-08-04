@@ -12,6 +12,17 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>♚</text></svg>">
 </head>
 <body>
+<div class="embers" aria-hidden="true">
+  <span style="--x:6%;  --d:16s; --dl:0s;   --s:3px; --drift:34px"></span>
+  <span style="--x:16%; --d:21s; --dl:-7s;  --s:2px; --drift:-22px"></span>
+  <span style="--x:28%; --d:18s; --dl:-3s;  --s:2px; --drift:18px"></span>
+  <span style="--x:41%; --d:24s; --dl:-12s; --s:3px; --drift:-30px"></span>
+  <span style="--x:55%; --d:17s; --dl:-5s;  --s:2px; --drift:26px"></span>
+  <span style="--x:67%; --d:22s; --dl:-15s; --s:3px; --drift:-18px"></span>
+  <span style="--x:78%; --d:19s; --dl:-9s;  --s:2px; --drift:30px"></span>
+  <span style="--x:88%; --d:25s; --dl:-2s;  --s:3px; --drift:-26px"></span>
+  <span style="--x:95%; --d:20s; --dl:-11s; --s:2px; --drift:14px"></span>
+</div>
 <div class="app">
 
   <header class="masthead">
@@ -44,6 +55,10 @@
       </div>
 
       <div class="board-frame">
+        <i class="bf-corner tl" aria-hidden="true"></i>
+        <i class="bf-corner tr" aria-hidden="true"></i>
+        <i class="bf-corner bl" aria-hidden="true"></i>
+        <i class="bf-corner br" aria-hidden="true"></i>
         <div class="board-inner">
           <div id="ranks" class="ranks"></div>
           <div class="board-and-files">
