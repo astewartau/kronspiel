@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>♚</text></svg>">
+<script type="module" src="js/demo.js"></script>
 <style>
   :root {
     --bg: #0f0d0b; --bg-2: #16130f; --panel: #1c1813; --panel-edge: #2e2820;
@@ -166,6 +167,20 @@
   <li><strong>The stricter touch rule cuts both ways.</strong> Threats against occupied squares now “count for nothing.” That is what killed the rush — but it also lets a Krone hug his own court more safely in the endgame.</li>
 </ol>
 
+<p>Before the numbers, the thing itself. Below is a complete nine-move game from the study's own data — steppable, use <span class="mono">‹ ›</span> or the arrow keys — in which <em>not a single piece is captured</em>. It is the purest demonstration of the rulebook's philosophy the simulations produced: a court that walls in its own Krone, one enemy blade, and the board admitting what every court eventually must.</p>
+
+<kron-demo label="Isolation, in the Flesh — a Bloodless Miniature" moves="f2-f3 e10-e9 e2-e3 d11-k4 g2-g3 g10-g7 e1-e2 k10-k9 g1-g2 i11-j9 g2-k6 e11-d11 f1-g2 k4-e10 k6-j6 f10-f8 j6-f10">
+  <script type="application/json">{
+    "0": "From an Ashen Approach trial game. No capture occurs in this entire game. Watch the Ash Krone's doors.",
+    "4": "Ash's Prälat sorties to k4 — far from court. Every piece that leaves the Krone's side is a wall that must one day be rebuilt.",
+    "11": "6. g2–k6 — Bone's Kanzler slips onto the long diagonal the raider abandoned.",
+    "14": "7… k4–e10 — the raider flees home, into his own Krone's doorway. A door filled by your own man is closed all the same (§6).",
+    "15": "8. k6–j6 — from j6 the Kanzler looks down the diagonal at f10: the Krone's last true door.",
+    "16": "8… f10–f8?? — the pawn steps out of the line… and out of the doorway.",
+    "17": "9. j6–f10 — the Kanzler takes the door and lays the blade at the throat. Every neighbour his own court; one enemy touch; Die Flucht blocked by his own men. Isolated — and no hand was ever laid on anyone."
+  }</script>
+</kron-demo>
+
 <h2><span class="num">III.</span>The Method</h2>
 <p>An AI-vs-AI harness plays complete games under variant rules — the shipping game code is never modified; each variant runs against a patched copy of the engine. Both courts are played by the same searcher (iterative-deepening negamax, the game's own AI) with a small randomised tie-break so no two games repeat. Draws by repetition and the fifty-move winter are claimed automatically; games still alive at 180 full moves are recorded as <em>unfinished</em>.</p>
 <p>Two regimes:</p>
@@ -320,7 +335,7 @@ node sim/summarize.mjs                        # the tables above</code></pre>
 
 <footer>
   <p>“You need not kill a king to finish him. You need only see that he has nowhere left to stand.”</p>
-  <p class="attribution">Prepared for the Designer by Claude (Fable 5), at the Bone Court's request · 728 games · August 2026</p>
+  <p class="attribution">Prepared for the Designer by Claude (Fable 5), at the Bone Court's request · 728 games · August 2026 · companion: <a href="sim_openings.html">the Opening Book</a></p>
 </footer>
 
 </div>
