@@ -940,13 +940,22 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 
 /* ---------- the Primer (tutorial) ---------- */
 
-.tutor-card { border-color: #6a5a2f; }
+/* an illuminated page, set apart from the rest of the sidebar */
+.tutor-card {
+  border-color: #6a5a2f;
+  background:
+    radial-gradient(120% 55% at 50% 0%, rgba(200, 162, 74, 0.08), transparent 60%),
+    linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.3),
+    0 0 26px rgba(200, 162, 74, 0.09);
+}
 
 .tutor-step {
-  float: right;
   font-size: 11px;
-  color: #6e6350;
+  color: #8a7040;
   letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 
 .tutor-title {
@@ -974,12 +983,22 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 /* ---------- winter clock & chronicle header ---------- */
 
 .winter-clock {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #2c261d;
+  position: relative;
+  margin-top: 10px;
+  padding-top: 9px;
   font-size: 13.5px;
   font-style: italic;
   color: var(--ember-soft);
+}
+/* an ember-toned hairline instead of a flat border */
+.winter-clock::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(184, 68, 47, 0.55), transparent);
 }
 
 .log-card h2.with-action {
@@ -1000,8 +1019,16 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
   border: 1px solid #2e2820;
   border-radius: 3px;
   padding: 9px 12px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.text-input:focus { outline: none; border-color: var(--gold); }
+.text-input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow:
+    inset 0 2px 8px rgba(0, 0, 0, 0.35),
+    0 0 12px rgba(200, 162, 74, 0.18);
+}
 .text-input::placeholder { color: #6e6350; font-style: italic; }
 
 #join-code {
@@ -1034,12 +1061,19 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
   letter-spacing: 0.35em;
   text-align: center;
   color: var(--gold-bright);
+  background: rgba(200, 162, 74, 0.05);
   border: 1px dashed #6a5a2f;
   border-radius: 4px;
   padding: 14px 8px 14px 20px;
   margin: 12px 0 6px;
   text-shadow: 0 0 18px rgba(200, 162, 74, 0.35);
   user-select: all;
+  animation: codeglow 3.2s ease-in-out infinite;
+}
+
+@keyframes codeglow {
+  0%, 100% { text-shadow: 0 0 12px rgba(200, 162, 74, 0.25); }
+  50%      { text-shadow: 0 0 24px rgba(200, 162, 74, 0.5); }
 }
 .room-code:empty { display: none; }
 
@@ -1062,6 +1096,13 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
   scrollbar-width: thin;
   scrollbar-color: #3a3226 transparent;
 }
+
+.chatlog::-webkit-scrollbar { width: 8px; }
+.chatlog::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3a3226, #2a241a);
+  border-radius: 4px;
+}
+.chatlog::-webkit-scrollbar-track { background: transparent; }
 
 .chat-msg { line-height: 1.35; overflow-wrap: anywhere; }
 .chat-msg .who {
@@ -1133,7 +1174,14 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 }
 .focus-btn:hover { border-color: var(--gold); color: var(--gold-bright); }
 
-.btn.mini { padding: 6px 12px; font-size: 11.5px; }
+.btn.mini {
+  padding: 6px 12px;
+  font-size: 11.5px;
+  clip-path: polygon(
+    5px 0, calc(100% - 5px) 0, 100% 5px,
+    100% calc(100% - 5px), calc(100% - 5px) 100%,
+    5px 100%, 0 calc(100% - 5px), 0 5px);
+}
 
 .focus-hud { display: none; }
 
@@ -1274,6 +1322,7 @@ body.focus.chat-open #chat-card .chatlog { max-height: 38dvh; }
   .sq.flucht-target::after,
   .btn.claim,
   .escape-badge.tight,
+  .room-code,
   .piece {
     animation: none !important;
   }
