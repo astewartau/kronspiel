@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <script>
-  // An invitation link (?join=CODE) belongs to the game, not the homepage.
-  if (/[?&]join=/.test(location.search)) location.replace('play.html' + location.search);
+  // Shared links (invitations, replays, puzzles) belong to the game, not the homepage.
+  if (/[?&](join|g|p)=/.test(location.search)) location.replace('play.html' + location.search);
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Kronspiel — a court-game of Isolation</title>

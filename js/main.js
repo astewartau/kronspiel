@@ -1570,14 +1570,24 @@ function playFromHere() {
   afterPositionChange(); // runs genLegal, checks for an already-decided position, paints, saves
 }
 
-// Shareable position codes ---------------------------------------------------
-function editCode() {
-  const o = { b: Array.from(editState.board), t: editState.turn, f: [editState.flucht[BONE] ? 1 : 0, editState.flucht[ASH] ? 1 : 0] };
-  return 'KP1:' + btoa(JSON.stringify(o));
+// Shareable positions ---------------------------------------------------------
+const puzzlePayload = () => ({ b: Array.from(editState.board), t: editState.turn, f: [editState.flucht[BONE] ? 1 : 0, editState.flucht[ASH] ? 1 : 0] });
+function editCode() { return 'KP1:' + b64enc(JSON.stringify(puzzlePayload())); } // for the local library
+
+// A tappable link; pass a stored KP1 code, or omit to share the current position.
+function puzzleShareUrl(kp1) {
+  const json = kp1 ? b64dec(kp1.replace(/^KP1:/i, '')) : JSON.stringify(puzzlePayload());
+  return shareLink('p', urlEnc(json));
 }
 
-function applyCode(code) {
-  const o = JSON.parse(atob(String(code).trim().replace(/^KP1:/i, '')));
+// Accepts a share link (?p=…), a KP1 code, or a raw payload.
+function applyCode(input) {
+  input = String(input).trim();
+  let json;
+  if (/[?&#]p=/.test(input)) json = urlDec(extractParam(input, 'p'));
+  else if (/^KP1:/i.test(input)) json = b64dec(input.replace(/^KP1:/i, ''));
+  else { try { json = urlDec(input); } catch { json = b64dec(input); } }
+  const o = JSON.parse(json);
   if (!Array.isArray(o.b) || o.b.length !== N * N) throw new Error('bad');
   editState.board = Int8Array.from(o.b.map((v) => v | 0));
   editState.turn = o.t === -1 ? ASH : BONE;
@@ -1634,7 +1644,7 @@ function initEditor() {
   });
 
   $('btn-ed-copy').addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(editCode()); editStatusFlash('Position code copied to the clipboard.'); }
+    try { await navigator.clipboard.writeText(puzzleShareUrl()); editStatusFlash('Share link copied to the clipboard.'); }
     catch { editStatusFlash('Copying failed — the browser withheld the clipboard.'); }
   });
   $('btn-ed-save').addEventListener('click', async () => {
@@ -1656,10 +1666,10 @@ function initEditor() {
   $('btn-puzzles-close').addEventListener('click', () => $('ov-puzzles').classList.add('hidden'));
   $('ov-puzzles').addEventListener('click', (e) => { if (e.target === $('ov-puzzles')) $('ov-puzzles').classList.add('hidden'); });
   $('btn-puzzles-load').addEventListener('click', async () => {
-    const code = await promptDialog({ title: 'Load a Shared Puzzle', note: 'Paste a Kronspiel position code (KP1:…).', placeholder: 'KP1:…', ok: 'Load' });
+    const code = await promptDialog({ title: 'Load a Shared Puzzle', note: 'Paste a Kronspiel puzzle link.', placeholder: 'https://…?p=…', ok: 'Load' });
     if (!code) return;
     if (!editing) enterEditor(false);
-    try { applyCode(code); $('ov-puzzles').classList.add('hidden'); } catch { editStatusFlash('That code could not be read.'); }
+    try { applyCode(code); $('ov-puzzles').classList.add('hidden'); } catch { editStatusFlash('That link could not be read.'); }
   });
   $('puzzles-list').addEventListener('click', (e) => {
     const open = e.target.closest('.annals-open');
@@ -1673,7 +1683,7 @@ function initEditor() {
       }
     } else if (copy) {
       const pz = getPuzzles()[+copy.dataset.i];
-      if (pz) navigator.clipboard?.writeText(pz.code).then(() => flashButton(copy, '✓'), () => {});
+      if (pz) navigator.clipboard?.writeText(puzzleShareUrl(pz.code)).then(() => flashButton(copy, '✓'), () => {});
     } else if (del) {
       const list = getPuzzles();
       list.splice(+del.dataset.i, 1);
@@ -1690,7 +1700,7 @@ function renderPuzzles() {
   el.innerHTML = list.map((pz, i) =>
     `<div class="annals-row">
       <button class="annals-open" data-i="${i}"><span class="an-name">${escXml(pz.name)}</span><span class="an-sub">Open in the editor</span></button>
-      <button class="annals-copy" data-i="${i}" title="Copy this puzzle's code">⧉</button>
+      <button class="annals-copy" data-i="${i}" title="Copy a share link">⧉</button>
       <button class="annals-del" data-i="${i}" title="Delete">✕</button>
     </div>`).join('');
 }
@@ -1763,16 +1773,17 @@ function renderAnnals() {
         <span class="an-name">${escXml(g.name)}</span>
         <span class="an-sub">${escXml(g.resultLabel)} · ${plies} plies · ${escXml(when)}</span>
       </button>
-      <button class="annals-copy" data-i="${i}" title="Copy a shareable replay code">⧉</button>
+      <button class="annals-copy" data-i="${i}" title="Copy a share link">⧉</button>
       <button class="annals-del" data-i="${i}" title="Delete">✕</button>
     </div>`;
   }).join('');
 }
 
-// Build a shareable KR1 replay code straight from a stored annals entry.
-function annalsEntryToCode(g) {
-  return 'KR1:' + b64enc(JSON.stringify({
-    n: g.name, m: g.mode, r: g.resultLabel, h: g.hist, l: g.log, no: g.notes || {}, co: g.commentary || {},
+// A shareable replay link straight from a stored annals entry.
+function annalsShareUrl(g) {
+  return shareLink('g', replayShareCode({
+    name: g.name, mode: g.mode, resultLabel: g.resultLabel,
+    states: (g.hist || []).map(deserialize), notes: g.notes, commentary: g.commentary,
   }));
 }
 
@@ -2014,43 +2025,85 @@ function saveReplay() {
 }
 
 // UTF-8-safe base64 (move notation and prose carry non-Latin1 glyphs).
+// UTF-8 base64, plus a URL-safe variant (move notation and prose carry non-Latin1 glyphs).
 const b64enc = (s) => btoa(unescape(encodeURIComponent(s)));
 const b64dec = (s) => decodeURIComponent(escape(atob(s)));
+const urlEnc = (s) => b64enc(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const urlDec = (s) => b64dec(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - s.length % 4) % 4));
+
+// Pull a query value out of a pasted link, or return the trimmed input unchanged.
+function extractParam(input, key) {
+  input = String(input).trim();
+  const m = input.match(new RegExp('[?&#]' + key + '=([^&\\s]+)'));
+  return m ? decodeURIComponent(m[1]) : input;
+}
+// A tappable link to the game carrying a shared code — nicer in a messenger than a raw blob.
+function shareLink(key, code) {
+  let base = location.origin + location.pathname;
+  base = /play\.html$/.test(base) ? base : base.replace(/[^/]*$/, 'play.html');
+  return `${base}?${key}=${code}`;
+}
+
+// A replay code stores only the start position and the list of moves (plus notes and
+// prose) and rebuilds the board history on load — a fraction of the size of every state.
+function replayShareCode(src) {
+  const start = src.states[0];
+  return urlEnc(JSON.stringify({
+    v: 2, n: src.name, m: src.mode, r: src.resultLabel,
+    s: { b: Array.from(start.board), t: start.turn, f: [start.flucht[BONE] ? 1 : 0, start.flucht[ASH] ? 1 : 0] },
+    mv: movesFromHist(src.states).map((m) => [m.from, m.to]),
+    no: prunedNotes(src.notes || {}),
+    co: prunedCommentary(src.commentary || {}),
+  }));
+}
+
+function replayFromShareCode(input) {
+  const o = JSON.parse(urlDec(extractParam(input, 'g')));
+  if (o.h) { // legacy full-history format
+    return { name: o.n, mode: o.m, resultLabel: o.r, states: o.h.map(deserialize), log: o.l || [], notes: o.no || {}, commentary: o.co || {} };
+  }
+  const start = {
+    board: Int8Array.from(o.s.b.map((v) => v | 0)),
+    turn: o.s.t === -1 ? ASH : BONE,
+    flucht: { [BONE]: !!o.s.f[0], [ASH]: !!o.s.f[1] },
+    clock: 0, reps: {}, ply: 0,
+  };
+  start.reps[positionKey(start)] = 1;
+  const states = [start], log = [];
+  for (const [from, to] of (o.mv || [])) {
+    const before = states[states.length - 1];
+    const m = genLegal(before).find((x) => x.from === from && x.to === to);
+    if (!m) break; // stop at the first move the current rules reject
+    log.push({ ply: before.ply, side: before.turn, piece: Math.abs(before.board[from]), body: notateBody(before, m) });
+    states.push(apply(before, m));
+  }
+  return { name: o.n, mode: o.m, resultLabel: o.r, states, log, notes: o.no || {}, commentary: o.co || {} };
+}
 
 function shareReplay() {
   stashStepAnno();
   stashCommentary();
-  const payload = {
-    n: replayName(),
-    m: replay.mode,
-    r: replay.resultLabel,
-    h: replay.states.map(serialize),
-    l: replay.log,
-    no: prunedNotes(replay.notes),
-    co: prunedCommentary(replay.commentary),
-  };
-  const code = 'KR1:' + b64enc(JSON.stringify(payload));
-  navigator.clipboard?.writeText(code).then(
-    () => flashButton($('btn-rp-share'), 'Copied ✓'),
-    () => promptDialog({ title: 'Share this Replay', note: 'Copy this code and send it along.', value: code, ok: 'Done' }),
+  const url = shareLink('g', replayShareCode({
+    name: replayName(), mode: replay.mode, resultLabel: replay.resultLabel,
+    states: replay.states, notes: replay.notes, commentary: replay.commentary,
+  }));
+  navigator.clipboard?.writeText(url).then(
+    () => flashButton($('btn-rp-share'), 'Link copied ✓'),
+    () => promptDialog({ title: 'Share this Replay', note: 'Copy this link and send it along.', value: url, ok: 'Done' }),
   );
 }
 
 async function loadSharedReplay() {
-  const code = await promptDialog({ title: 'Load a Shared Replay', note: 'Paste a replay code (KR1:…).', placeholder: 'KR1:…', ok: 'Load' });
+  const code = await promptDialog({ title: 'Load a Shared Replay', note: 'Paste a Kronspiel replay link.', placeholder: 'https://…?g=…', ok: 'Load' });
   if (!code) return;
   try {
-    const o = JSON.parse(b64dec(code.trim().replace(/^KR1:/i, '')));
-    if (!Array.isArray(o.h) || !o.h.length) throw new Error('bad');
+    const cfg = replayFromShareCode(code);
+    if (!cfg.states.length) throw new Error('bad');
     $('ov-annals').classList.add('hidden');
-    startReplay({
-      name: o.n, mode: o.m, resultLabel: o.r,
-      states: o.h.map(deserialize),
-      log: o.l || [], notes: o.no || {}, commentary: o.co || {},
-    });
+    startReplay(cfg);
   } catch {
     renderAnnals();
-    $('annals-list').insertAdjacentHTML('afterbegin', '<div class="annals-empty">That replay code could not be read.</div>');
+    $('annals-list').insertAdjacentHTML('afterbegin', '<div class="annals-empty">That replay link could not be read.</div>');
   }
 }
 
@@ -2076,7 +2129,7 @@ function initAnnals() {
       if (entry) { $('ov-annals').classList.add('hidden'); openReplayFromEntry(entry); }
     } else if (copy) {
       const g = getAnnals()[+copy.dataset.i];
-      if (g) navigator.clipboard?.writeText(annalsEntryToCode(g)).then(() => flashButton(copy, '✓'), () => {});
+      if (g) navigator.clipboard?.writeText(annalsShareUrl(g)).then(() => flashButton(copy, '✓'), () => {});
     } else if (del) {
       const list = getAnnals();
       list.splice(+del.dataset.i, 1);
@@ -2747,9 +2800,14 @@ if (result) {
   $('btn-show-result').classList.remove('hidden');
 }
 
-// An invitation link (?join=CODE) goes straight to the table.
-const joinParam = new URLSearchParams(location.search).get('join');
+// Shared links open straight into the game.
+const bootParams = new URLSearchParams(location.search);
+const joinParam = bootParams.get('join');
 if (joinParam && normalizeCode(joinParam)) {
   history.replaceState(null, '', location.pathname);
   startJoin(normalizeCode(joinParam));
+} else if (bootParams.get('g')) {
+  try { startReplay(replayFromShareCode(bootParams.get('g'))); history.replaceState(null, '', location.pathname); } catch { /* bad link */ }
+} else if (bootParams.get('p')) {
+  try { enterEditor(false); applyCode(bootParams.get('p')); history.replaceState(null, '', location.pathname); } catch { /* bad link */ }
 }
