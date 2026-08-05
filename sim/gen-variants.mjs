@@ -19,12 +19,6 @@ function patch(src, edits, label) {
   return out;
 }
 
-// --- ai patch: a palsied court (frozen while touched) is a loss in search ---
-const aiFrozenLoss = patch(aiSrc, [{
-  from: "    if (!anyLegal) return 0; // frozen court: treated as a draw",
-  to: "    if (!anyLegal) return iso.enemyTouch ? -(WIN - ply) : 0; // palsied court: a loss",
-}], 'ai/frozenloss');
-
 // --- engine patch: loose enemy-touch (pre-update isolation rule) ---
 const engineLoose = patch(engineSrc, [{
   from: `    if (q !== EMPTY) {
@@ -69,7 +63,6 @@ const aiAnalysis = patch(aiSrc, [{
 const variants = {
   baseline: { engine: engineSrc, ai: aiSrc },
   analysis: { engine: engineSrc, ai: aiAnalysis },
-  frozenloss: { engine: engineSrc, ai: aiFrozenLoss },
   loose: { engine: engineLoose, ai: aiSrc },
   winter: { engine: engineWinter, ai: aiSrc },
 };

@@ -136,7 +136,7 @@ export function findBestMove(state, level, rng = Math.random, planMove = null) {
       if (v > alpha) alpha = v;
       if (alpha >= beta) break;
     }
-    if (!anyLegal) return 0; // frozen court: treated as a draw
+    if (!anyLegal) return iso.enemyTouch ? -(WIN - ply) : 0; // the Palsied Court is a loss; the Frozen Court a draw
     return best;
   }
 

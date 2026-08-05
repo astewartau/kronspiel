@@ -55,7 +55,7 @@ Columns 1 and 11 of the home rank — the **Wings** — are left open at the sta
 
 All pieces move and capture as in any related court-game, with the following names and flavour:
 
-- **Krone** (the King-piece) — moves one square in any direction. Never captured; see §6.
+- **Krone** (the King-piece) — moves one square in any direction, onto open ground only. Never captured, and never captures; see §6.
 - **Kanzler** — moves any number of squares in any direction. The board's single most dangerous piece, and, being doubled, the source of most early-game disasters.
 - **Marschall** — moves any number of squares orthogonally. Represents committed force moving along a fixed road; cannot turn once committed to a line any more than an army can.
 - **Prälat** — moves any number of squares diagonally. Represents indirect, oblique influence — the Ecclesia is said never to move a piece directly toward what it wants.
@@ -87,6 +87,8 @@ Isolation occurs when **both** of the following are true:
 1. Every square adjacent to the Krone — including the square reached by Die Flucht, if it remains unused and the path unobstructed — is occupied by a piece, threatened by an enemy piece, or lies off the edge of the board.
 2. **Either the Krone's own square is directly threatened by an enemy piece, or at least one of the adjacent squares that is genuinely empty — held by no piece of either colour — is threatened by an enemy piece.**
 
+**The Krone is judged as if already lifted from his square.** Wherever these rules ask whether a square is threatened — an escape square beside him, a square along the Flucht's road, or any square he might step to — the question is answered as though the Krone were not standing where he stands. A Kanzler bearing directly upon the Krone threatens the ground *behind* him just as surely as the ground before him: the line runs through the square he occupies, and the moment he steps off it, the blade follows. A king does not shelter a doorway with his own body. (This was the second hard lesson of the playtesting table: judged with the Krone left in place, he could be counted "safe" on squares he could never legally move to, and sieges that had plainly closed were allowed to play on.)
+
 The second condition is stricter than it first appears, and it was made this precise only after a hard lesson from the playtesting table. An enemy piece threatening a square that is already filled by the Krone's own court contributes nothing to his ruin: that square was never going to open for him regardless of who threatens it, and a threat against ground he could never have reached is not a siege — only an idle gesture. Only two things ever end a Krone's reign: a blade genuinely at his own throat, or a door left standing open that the enemy, and the enemy alone, has nailed shut. A neighbour still crowded by his own men is neither, no matter how many enemy pieces happen to be glaring at it.
 
 This matters most in the game's opening moves. At the instant play begins, every Krone's neighbouring squares are entirely filled by his own men — there is nothing empty yet for an enemy to threaten, and no line yet reaches his own square either. A fast diagonal thrust in the first handful of moves, however cleanly executed, cannot end the game this way; it can only threaten pieces that were already staying exactly where they were. Isolation is a mid-game and endgame reckoning, earned by the slow work of drawing a Krone's own court out of position until a real gap opens — never a trick sprung before either side has finished so much as its opening development.
@@ -96,6 +98,14 @@ Old players are fond of noting that a Krone is never undone by his own house alo
 ### The Krone cannot be taken
 
 No piece, of either colour, may ever execute a move that would capture the Krone. This is not merely bad form; it is not a legal move at all, in precisely the way that landing on the Aschenstuhl is not a legal move for any piece, for anyone. A Krone may stand, for as long as the game allows it, on a square directly threatened by an enemy piece — Kronspiel has no rule compelling an immediate response to such a threat, because none is needed. Force alone has never been able to touch him, and the rules simply make that literal. Only Isolation ends a Krone's part in the game. Everything else is theatre.
+
+### The Krone takes no one
+
+The courtesy is returned in full. **The Krone may never capture** — not a Bürger, not a Kanzler standing at his very elbow, nothing. He moves only onto open ground. This is the same philosophy that forbids check and forbids the rescue, applied without favour to the king himself: Kronspiel permits no *reaction*. A court may not answer a closing trap by striking at it, and neither may the Krone answer a wall by tearing a brick from it with his own hands. An enemy piece standing beside the Krone is simply part of whatever wall is being built — the Krone walks around walls or he does not walk at all. (Before this was made explicit, a Krone could "escape" a finished siege by taking the very piece that closed it — a checkmate-flavoured exception the game's philosophy was never meant to allow.)
+
+### The Palsied Court
+
+One further reckoning follows from all of the above, and it is asked in the same breath as Isolation, at the start of every turn: **a player who has no legal move at all — no piece of their court, Krone included, with anywhere lawful to go — loses at once, provided the enemy has a hand in it** under exactly the test of condition 2 above: a blade at the Krone's own throat, or an enemy threat against a genuinely empty square beside him. The court is not isolated, merely paralysed — but paralysed under siege is fallen, and the board admits it. A court that chokes itself utterly still with no enemy touch anywhere upon the wall is the rarer, stranger thing: not a loss but the Frozen Court, and it is drawn (§7).
 
 ### There is no rescue
 
@@ -107,12 +117,13 @@ This is a harder rule than it first appears, and deliberately so. It is also the
 
 ## 7. Draw Conditions
 
-Kronspiel recognises four ways a game may end without an Isolation:
+Kronspiel recognises five ways a game may end without an Isolation or a Palsy:
 
 - **The Long Siege** — if an identical position, with the same player to move, occurs a third time, either player may claim a draw.
 - **The Long Winter** — if fifty consecutive moves pass with no Bürger moved and no piece captured, either player may claim a draw.
 - **The Empty Court** — if neither side retains sufficient force to force an Isolation (a lone Krone against a lone Krone, most commonly), the game is drawn automatically.
 - **Mutual Ruin** — in the rare case a forced sequence leaves both Krone simultaneously without a legal move at the start of the same round, the game is declared a draw under this name. Older players consider it the most honest outcome the board can produce, and the least common by a wide margin.
+- **The Frozen Court** — a player with no legal move whatsoever, whose Krone is not isolated and whose wall the enemy touches nowhere (again by the test of §6, condition 2), is not lost but stuck: their own court alone has choked the game still. It is drawn automatically. A player is never undone by their own house alone — see the Palsied Court (§6) for what happens the moment the enemy's hand joins the wall.
 
 A draw may also simply be agreed between the players — a Parley — at any point either wishes to offer one.
 

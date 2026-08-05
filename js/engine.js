@@ -164,10 +164,13 @@ export function genPseudo(board, side, fluchtAvail) {
         if (!onBoard(rr, cc)) continue;
         const t = idx(rr, cc);
         if (t === ASCH) continue;
-        const q = board[t];
-        if (q === EMPTY || (Math.sign(q) === -side && Math.abs(q) !== KRONE)) moves.push({ from, to: t });
+        // The Krone takes no one (§6): he moves only onto open ground.
+        if (board[t] === EMPTY) moves.push({ from, to: t });
       }
       if (fluchtAvail) {
+        // Path threats are judged with the Krone lifted (§6): he cannot
+        // shelter the road behind his own body.
+        board[from] = EMPTY;
         for (const [dr, dc] of ORTH) {
           for (let d = 1; d <= 3; d++) {
             const rr = r + dr * d, cc = c + dc * d;
@@ -177,6 +180,7 @@ export function genPseudo(board, side, fluchtAvail) {
             if (d >= 2) moves.push({ from, to: t, flucht: true });
           }
         }
+        board[from] = p;
       }
     } else {
       const dirs = type === MARSCHALL ? ORTH : type === PRALAT ? DIAG : ALL8;
@@ -213,6 +217,11 @@ export function isolationInfo(board, side, fluchtAvail, full = false) {
   const r = rowOf(kSq), c = colOf(kSq);
   const open = [];
   const closed = [];
+  // Every threat below is judged with the Krone lifted from his square (§6):
+  // a slider's line runs through the ground he stands on, so he can never
+  // shelter an escape square behind his own body.
+  const lifted = board[kSq];
+  board[kSq] = EMPTY;
   let enemyTouch = attacked(board, kSq, -side); // a blade at his own throat
 
   for (const [dr, dc] of ALL8) {
@@ -259,6 +268,7 @@ export function isolationInfo(board, side, fluchtAvail, full = false) {
     }
   }
 
+  board[kSq] = lifted;
   return { isolated: open.length === 0 && enemyTouch, enemyTouch, kSq, open, closed };
 }
 
@@ -322,7 +332,7 @@ export function apply(state, m) {
 
 // Automatic / claimable game-end checks at the start of `state.turn`'s turn.
 // Returns null, or { type, loser?, ... }
-//   type: 'isolation' | 'mutual' | 'empty' | 'frozen'
+//   type: 'isolation' | 'mutual' | 'empty' | 'palsy' | 'frozen'
 export function turnStartResult(state, legalMoves) {
   const { board, turn, flucht } = state;
   const mine = isolationInfo(board, turn, flucht[turn], true);
@@ -338,7 +348,12 @@ export function turnStartResult(state, legalMoves) {
     if (p !== EMPTY && Math.abs(p) !== KRONE) { others++; break; }
   }
   if (others === 0) return { type: 'empty' };
-  if (legalMoves.length === 0) return { type: 'frozen' };
+  if (legalMoves.length === 0) {
+    // The Palsied Court (§6): no legal move left while the enemy's hand is on
+    // the wall — a loss. Without enemy touch it is the Frozen Court, a draw (§7).
+    if (mine.enemyTouch) return { type: 'palsy', loser: turn, info: mine };
+    return { type: 'frozen' };
+  }
   return null;
 }
 

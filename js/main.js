@@ -159,7 +159,7 @@ function paint() {
   const escInfo = showEsc && !result
     ? isolationInfo(state.board, state.turn, state.flucht[state.turn], true)
     : null;
-  const doom = result && (result.type === 'isolation' || result.type === 'mutual') ? result.info : null;
+  const doom = result && (result.type === 'isolation' || result.type === 'mutual' || result.type === 'palsy') ? result.info : null;
 
   const legalFrom = selection !== null
     ? legalCache.filter((m) => m.from === selection)
@@ -357,7 +357,7 @@ function onBoardClick(e) {
   if (!sqEl || result || aiThinking) return;
   if (settings.mode === 'ai' && cur().turn !== settings.humanSide) return;
   if (isOnline() && (!oppHere || !net?.connected || cur().turn !== settings.humanSide)) return;
-  if (isTutorial() && !LESSONS[tut.step]?.expect) return; // narration steps: the board rests
+  if (isTutorial() && (!LESSONS[tut.step]?.expect || tut.done)) return; // narration steps (and a lesson already answered): the board rests
   const sq = +sqEl.dataset.sq;
   const state = cur();
   noticeText = null;
@@ -402,6 +402,10 @@ function illegalHint(from, to) {
       return 'The Krone cannot be taken. Only Isolation ends his reign.';
     }
     return null;
+  }
+  if (Math.abs(p) === KRONE && q !== EMPTY && Math.sign(q) === -state.turn) {
+    const dr = Math.abs(rowOf(from) - rowOf(to)), dc = Math.abs(colOf(from) - colOf(to));
+    if (dr <= 1 && dc <= 1) return 'The Krone takes no one. He moves only onto open ground.';
   }
   const pm = genPseudo(state.board, state.turn, state.flucht[state.turn])
     .find((m) => m.from === from && m.to === to);
@@ -453,7 +457,18 @@ function afterPositionChange() {
     // No results, no AI, no saving: the Primer narrates its own endings.
     paint();
     paintLog();
-    if (tut && LESSONS[tut.step]?.expect) tutAdvance();
+    if (tut && LESSONS[tut.step]?.expect && !tut.done) {
+      // The asked-for move was made. Let it be seen — the lesson waits, and
+      // Continue appears once the piece has settled.
+      tut.done = true;
+      const step = tut.step;
+      setTimeout(() => {
+        if (!tut || tut.step !== step || !tut.done) return;
+        const btn = $('btn-tutor-next');
+        btn.classList.remove('hidden');
+        btn.classList.add('reveal');
+      }, 550);
+    }
     return;
   }
 
@@ -491,10 +506,19 @@ function setResult(end) {
       r.title = 'The Empty Court';
       r.text = 'Two crowns, no court, and nothing left with which to build a wall. The game is drawn automatically.';
       break;
+    case 'palsy': {
+      const loser = end.loser;
+      r.label = `The Palsied Court — ${sideName(-loser)} prevails.`;
+      r.title = 'The Palsied Court';
+      r.text = `The ${loser === BONE ? 'Bone' : 'Ash'} court has no legal move left to make, and the enemy's hand is already on the wall. ` +
+        'A court that cannot act while under siege has already fallen; the board merely admits it.';
+      r.short = `${sideName(loser)}’s court is palsied.`;
+      break;
+    }
     case 'frozen':
-      r.label = 'The court is frozen — the game is drawn.';
-      r.title = 'A Frozen Court';
-      r.text = 'No legal move remains, yet the Krone is not isolated. The rules of the capital are silent here; this table calls it a draw.';
+      r.label = 'The Frozen Court — the game is drawn.';
+      r.title = 'The Frozen Court';
+      r.text = 'No legal move remains, yet no enemy hand touches the wall — the court has simply choked itself still. With no siege to answer for it, the game is drawn.';
       break;
     case 'siege':
       r.label = 'The Long Siege — the game is drawn.';
@@ -728,11 +752,11 @@ function load() {
     flipped = !!o.flipped;
     lastMove = o.lastMove || null;
     aiOpening = OPENINGS.find((op) => op.name === o.aiOpeningName) || null;
-    if (result && (result.type === 'isolation' || result.type === 'mutual')) {
+    if (result && (result.type === 'isolation' || result.type === 'mutual' || result.type === 'palsy')) {
       // recompute the doom overlay from the final position
       const s = cur();
       const info = isolationInfo(s.board, s.turn, s.flucht[s.turn], true);
-      if (info.isolated) result.info = info;
+      if (info.isolated || result.type === 'palsy') result.info = info;
     }
     return true;
   } catch {
@@ -752,7 +776,7 @@ function startTutorial() {
   aiOpening = null;
   noticeText = null;
   flipped = false;
-  tut = { step: -1 };
+  tut = { step: -1, snaps: [] };
   $('ov-new').classList.add('hidden');
   $('ov-rules').classList.add('hidden');
   $('ov-over').classList.add('hidden');
@@ -765,11 +789,44 @@ function startTutorial() {
 }
 
 function tutAdvance() {
-  tut.step++;
-  if (tut.step >= LESSONS.length) { exitTutorial(); return; }
-  const s = LESSONS[tut.step];
+  tutGoto(tut.step + 1);
+}
+
+function tutBack() {
+  if (tut.step > 0) tutGoto(tut.step - 1);
+}
+
+// Each lesson's entry position is snapshotted, so Back restores the board
+// exactly as the lesson first found it — scripted moves then replay.
+function tutSnapshot() {
+  return {
+    state: serialize(cur()),
+    logEntries: logEntries.slice(),
+    capturedBy: { [BONE]: capturedBy[BONE].slice(), [ASH]: capturedBy[ASH].slice() },
+    lastMove: lastMove ? { ...lastMove } : null,
+  };
+}
+
+function tutRestore(snap) {
+  hist = [deserialize(snap.state)];
+  logEntries = snap.logEntries.slice();
+  capturedBy = { [BONE]: snap.capturedBy[BONE].slice(), [ASH]: snap.capturedBy[ASH].slice() };
+  lastMove = snap.lastMove ? { ...snap.lastMove } : null;
+  selection = null;
+  legalCache = genLegal(cur());
+  syncPieces();
+}
+
+function tutGoto(step) {
+  if (step >= LESSONS.length) { exitTutorial(); return; }
+  const back = step < tut.step;
+  tut.step = step;
+  tut.done = false;
+  const s = LESSONS[step];
   noticeText = null;
-  if (s.setup) {
+  if (back && tut.snaps[step]) {
+    tutRestore(tut.snaps[step]);
+  } else if (s.setup) {
     hist = [buildTutState(s.setup)];
     logEntries = [];
     capturedBy = { [BONE]: [], [ASH]: [] };
@@ -778,14 +835,32 @@ function tutAdvance() {
     legalCache = genLegal(cur());
     syncPieces();
   }
+  if (!back) tut.snaps[step] = tutSnapshot();
   if (s.escapes !== undefined) $('chk-escapes').checked = !!s.escapes;
-  $('tutor-step').textContent = `${tut.step + 1} of ${LESSONS.length}`;
+  $('tutor-step').textContent = `${step + 1} of ${LESSONS.length}`;
   $('tutor-title').textContent = s.title;
   $('tutor-text').textContent = s.text;
-  $('btn-tutor-next').classList.toggle('hidden', !!s.expect);
-  $('btn-tutor-next').textContent = tut.step === LESSONS.length - 1 ? 'Finish' : 'Continue';
+  $('btn-tutor-back').classList.toggle('hidden', step === 0);
+  const btn = $('btn-tutor-next');
+  btn.classList.toggle('hidden', !!s.expect);
+  btn.classList.remove('reveal');
+  btn.textContent = step === LESSONS.length - 1 ? 'Finish' : 'Continue';
   paint();
   paintLog();
+  // Scripted moves play out on the live board while the lesson narrates.
+  if (s.autoMoves?.length) {
+    const seq = s.autoMoves.slice();
+    const playNext = () => {
+      if (!tut || tut.step !== step) return; // the player has moved on
+      const txt = seq.shift();
+      const from = sqOf(txt.slice(0, txt.indexOf('-')));
+      const to = sqOf(txt.slice(txt.indexOf('-') + 1));
+      const m = legalCache.find((x) => x.from === from && x.to === to);
+      if (m) playMove(m);
+      if (seq.length) setTimeout(playNext, 850);
+    };
+    setTimeout(playNext, 700);
+  }
 }
 
 function tutAllows(m) {
@@ -1334,6 +1409,7 @@ function wireUi() {
   $('btn-primer-rules').addEventListener('click', startTutorial);
   $('btn-primer-new').addEventListener('click', startTutorial);
   $('btn-tutor-next').addEventListener('click', () => { if (tut) tutAdvance(); });
+  $('btn-tutor-back').addEventListener('click', () => { if (tut) tutBack(); });
   $('btn-tutor-exit').addEventListener('click', () => { if (tut) exitTutorial(); });
 
   // Chronicle export

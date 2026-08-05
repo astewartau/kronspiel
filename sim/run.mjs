@@ -11,11 +11,11 @@ const nGames = +nGamesArg;
 const seedBase = +seedBaseArg;
 
 // variant -> which patched module set to load, plus harness-level rules
+// The Palsied Court and the lifted-Krone test are core rules now — every
+// variant inherits them from the live engine.
 const CFG = {
   baseline: { dir: 'baseline', cfg: {} },
-  frozenloss: { dir: 'frozenloss', cfg: { frozenLoss: true } },
   hollow: { dir: 'baseline', cfg: { hollow: 10 } },
-  smallhammers: { dir: 'frozenloss', cfg: { frozenLoss: true, hollow: 10 } },
   loose: { dir: 'loose', cfg: {} },
   loosetruce: { dir: 'loose', cfg: { trucePly: 12 } },
   winter: { dir: 'winter', cfg: { winter: [[60, 0], [100, 1], [140, 2]] } },
@@ -121,7 +121,7 @@ function playGame(seed) {
     const legal = engine.genLegal(state);
     if (legal.length === 0) {
       if (inTruce) { truceSaves++; state = passTurn(state); continue; }
-      if (cfg.frozenLoss && mine.enemyTouch) {
+      if (mine.enemyTouch) {
         return { type: 'palsy', loser: turn, plies: ply, truceSaves, claimed };
       }
       return { type: 'frozen', plies: ply, truceSaves, claimed };

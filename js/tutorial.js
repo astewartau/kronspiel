@@ -4,7 +4,7 @@
 
 import {
   N, idx, initialState, genLegal, apply,
-  KRONE, MARSCHALL, GESANDTER, BURGER,
+  KRONE, KANZLER, MARSCHALL, GESANDTER, BURGER,
   BONE, ASH,
 } from './engine.js';
 
@@ -27,14 +27,19 @@ export const LESSONS = [
   {
     title: 'The Ash Seat',
     text: 'The marked centre square is the Aschenstuhl — the empty throne. No piece may ever stand '
-      + 'upon it, and the sliding pieces cannot see past it. It blocks like a wall, but it threatens '
-      + 'no one: for the Krone it is simply the edge of the board, brought inward.',
-    setup: 'initial',
+      + 'upon it, and the sliding pieces cannot see past it. Watch the Kanzler run the whole rank — '
+      + 'and halt before the empty chair. It blocks like a wall, but it threatens no one: for the '
+      + 'Krone it is simply the edge of the board, brought inward.',
+    setup: {
+      pieces: [P('a6', KANZLER, BONE), P('f1', KRONE, BONE), P('f11', KRONE, ASH)],
+      turn: BONE,
+    },
     marks: ['f6'],
+    autoMoves: ['a6-e6'],
   },
   {
     title: 'The Krone',
-    text: 'Your Krone moves one square in any direction, like a king of the foreign game. '
+    text: 'Your Krone moves one square in any direction, like a king in chess. '
       + 'Move him now — any square you please.',
     setup: {
       pieces: [P('e6', KRONE, BONE), P('k11', KRONE, ASH)],
@@ -44,10 +49,11 @@ export const LESSONS = [
   },
   {
     title: 'Escapes Are Life',
-    text: 'The overlay now shows your Krone’s standing. Green squares are open — he could go '
-      + 'there. Red squares are claimed by the enemy: the Marschall on c8 bears down the file. '
-      + 'The count in the player bar tracks these open doors. When they reach zero under enemy '
-      + 'touch, the game ends. Watch that number the way you would watch your own pulse.',
+    text: 'The overlay now shows your Krone’s escape squares. Green squares are open — he could '
+      + 'go there. Red squares are threatened by the enemy: the Marschall on c8 controls the '
+      + 'c-file. The count in the player bar tracks these open doors. When no green remains — '
+      + 'and the enemy threatens the Krone’s own square, or any empty square beside him — the '
+      + 'game ends, and he loses. Watch that number the way you would watch your own pulse.',
     setup: {
       pieces: [P('c3', KRONE, BONE), P('c8', MARSCHALL, ASH), P('k11', KRONE, ASH)],
       turn: BONE,
@@ -58,8 +64,9 @@ export const LESSONS = [
   {
     title: 'A Wall of His Own Men',
     text: 'This Krone is entirely walled in — by his own loyal court. And he is perfectly safe. '
-      + 'A Krone is never undone by his own house alone: with no enemy hand in the matter, '
-      + 'a crowded court is only a crowded court. But mark how few doors he has left to lose.',
+      + 'A Krone is never lost to his own men alone: until an enemy piece threatens his square '
+      + 'or an empty square beside him, a crowded court is only a crowded court. But notice how '
+      + 'few doors he has left to lose.',
     setup: {
       pieces: [
         P('a1', KRONE, BONE), P('a2', BURGER, BONE), P('b2', BURGER, BONE), P('b1', MARSCHALL, BONE),
@@ -73,8 +80,9 @@ export const LESSONS = [
     title: 'Deliver an Isolation',
     text: 'Now stand on the other side of that lesson. The Ash Krone in the corner is walled in by '
       + 'his own men — every neighbouring square filled, nothing empty for you to claim. One piece '
-      + 'in the game can still finish him: the Gesandter, who leaps walls and can lay a blade at the '
-      + 'Krone’s own square. Leap your Gesandter from d8 to b9.',
+      + 'in the game can still finish him: the Gesandter, whose leap ignores the wall and can '
+      + 'threaten the Krone’s own square directly — a blade at his throat. Leap your Gesandter '
+      + 'from d8 to b9.',
     setup: {
       pieces: [
         P('a11', KRONE, ASH), P('a10', BURGER, ASH), P('b10', BURGER, ASH), P('b11', MARSCHALL, ASH),
@@ -88,23 +96,104 @@ export const LESSONS = [
   {
     title: 'The Message Has Arrived',
     text: 'From b9 your Gesandter threatens the Krone’s own square — a blade at his throat while '
-      + 'his own court holds every door shut. Were this a real game it would already be over: '
-      + 'Isolation is judged at the start of his turn, before any piece may act. His Marschall '
-      + 'could capture your Gesandter next move. It does not matter. There is no rescue — you may '
-      + 'kill the messenger; the message has already arrived.',
+      + 'his own court holds every door shut. The game ended the instant his turn began, before '
+      + 'any piece was given leave to act. Mark the Bürger on a10: he stands one diagonal step '
+      + 'from your Gesandter — a capture he will never be allowed to make, because there is no '
+      + 'turn left to make it in. There is no rescue. You may kill the messenger; the message '
+      + 'has already arrived.',
     setup: null,
     escapes: true,
-    arrows: [['b9', 'a11']],
+    arrows: [['b9', 'a11'], ['a10', 'b9']],
+  },
+  {
+    title: 'A King Never Touched',
+    text: 'That Isolation still looked much like a checkmate: the king directly attacked, every '
+      + 'escape barred. Kronspiel can end that way — it does not need to. This Ash Krone is '
+      + 'walled in by his own loyal court, and no piece of yours threatens him. None ever will. '
+      + 'One neighbouring square is genuinely empty: b10. Threaten it from half a board away — '
+      + 'slide your Marschall to b5, and the b-file does the rest.',
+    setup: {
+      pieces: [
+        P('a11', KRONE, ASH), P('a10', BURGER, ASH), P('b11', MARSCHALL, ASH),
+        P('g5', MARSCHALL, BONE), P('f2', KRONE, BONE),
+      ],
+      turn: BONE,
+    },
+    marks: ['b10'],
+    expect: { from: 'g5', to: ['b5'], hint: 'Slide the Marschall along the rank to b5 — the b-file does the rest.' },
+  },
+  {
+    title: 'No Check Ever Came',
+    text: 'It is done — and notice what never happened. No piece ever attacked the Krone. There '
+      + 'was no check, no warning; Kronspiel has none to give. His Marschall stares down the '
+      + 'file at yours — a capture that will never come, because the game ended before his turn '
+      + 'began. In chess this position would be nothing: the king is not even attacked, and his '
+      + 'army stands alive around him. Here, his reign is over. You do not kill a king in '
+      + 'Kronspiel. You see that he has nowhere left to stand.',
+    setup: null,
+    escapes: true,
+    arrows: [['b5', 'b10'], ['b11', 'b5']],
   },
   {
     title: 'Idle Gestures',
-    text: 'Note what did NOT work here: pieces glaring at squares the Ash court already fills. '
-      + 'A threat against ground the Krone could never have reached is not a siege — only an idle '
-      + 'gesture. Only two things end a reign: a blade at the Krone’s own square, or an enemy claim '
-      + 'on a genuinely empty door. And remember — the Krone can never be captured. A piece may '
-      + 'threaten him forever; it may never take him. Everything but Isolation is theatre.',
+    text: 'Notice what did NOT count just now. Your Marschall on b5 also threatens b11 — but b11 '
+      + 'is already filled by an Ash piece, and a threat against a square the Krone could never '
+      + 'have stepped onto anyway contributes nothing. Such threats are idle gestures. Only two '
+      + 'things end a reign: a threat against the Krone’s own square, or a threat against a '
+      + 'genuinely empty square beside him. Everything else is theatre.',
     setup: null,
     escapes: true,
+  },
+  {
+    title: 'The Krone Takes No One',
+    text: 'The Krone can never be captured — and he captures no one in return. He moves only onto '
+      + 'empty squares. An Ash Bürger stands right beside your Krone, undefended. Try to take it: '
+      + 'the game will refuse the move. Then step the Krone onto an open square instead — in '
+      + 'Kronspiel, walls are walked around, never torn open. (And note the empty throne beside '
+      + 'him: no piece may ever stand there, his own included.)',
+    setup: {
+      pieces: [P('e5', KRONE, BONE), P('e6', BURGER, ASH), P('k11', KRONE, ASH)],
+      turn: BONE,
+    },
+    marks: ['e6'],
+    expect: { from: 'e5', to: null, hint: 'The Bürger cannot be taken — step the Krone onto an open square instead.' },
+  },
+  {
+    title: 'No Shelter',
+    text: 'The Ash Marschall attacks along the whole rank — straight at the Krone. Could the '
+      + 'Krone slip behind himself, to f1? No. Every threat is judged as though the Krone were '
+      + 'already lifted off his square: the Marschall’s line runs through the ground he stands '
+      + 'on, so the moment he steps aside, it follows him. A king cannot shelter an escape '
+      + 'square behind his own body. Look at the overlay: every door burns red. This Krone is '
+      + 'already lost.',
+    setup: {
+      pieces: [
+        P('e1', KRONE, BONE), P('d2', BURGER, BONE), P('e2', BURGER, BONE), P('f2', BURGER, BONE),
+        P('a1', MARSCHALL, ASH), P('k11', KRONE, ASH),
+      ],
+      turn: BONE,
+    },
+    escapes: true,
+    arrows: [['a1', 'f1']],
+  },
+  {
+    title: 'The Palsied Court',
+    text: 'One door still shows green — b2 — and yet Bone has no legal move at all. Stepping onto '
+      + 'b2 would isolate the Krone the moment he arrived, and no player may isolate their own '
+      + 'king; the Bürger is blocked dead by the Marschall in front of him. A player with no '
+      + 'legal move, while the enemy threatens the Krone’s square or an empty square beside him, '
+      + 'loses: the Palsied Court. If a court is stuck with no enemy threat anywhere near the '
+      + 'Krone, it is a draw instead — the Frozen Court.',
+    setup: {
+      pieces: [
+        P('a1', KRONE, BONE), P('a2', BURGER, BONE),
+        P('a3', MARSCHALL, ASH), P('k1', MARSCHALL, ASH), P('b4', GESANDTER, ASH),
+        P('k11', KRONE, ASH),
+      ],
+      turn: BONE,
+    },
+    escapes: true,
+    marks: ['b2'],
   },
   {
     title: 'Die Flucht',
@@ -133,9 +222,9 @@ export const LESSONS = [
   },
   {
     title: 'The Rising',
-    text: 'A Bürger who crosses the whole board rises — but only ever to a Gesandter. A common man '
-      + 'may serve power closely; he may never become it. Your Bürger stands one step from the far '
-      + 'rank. March him home and watch him take the spymaster’s cloak.',
+    text: 'A Bürger who reaches the far rank promotes — but only ever to a Gesandter, never to a '
+      + 'Kanzler, Marschall, or Prälat. A common man may serve power closely; he may never become '
+      + 'it. Your Bürger stands one step from the far rank. March him home and watch him rise.',
     setup: {
       pieces: [P('d10', BURGER, BONE), P('b1', KRONE, BONE), P('k11', KRONE, ASH)],
       turn: BONE,
@@ -144,22 +233,22 @@ export const LESSONS = [
   },
   {
     title: 'The Fool’s Gate',
-    text: 'One famous miniature before you go — every child of the capital is shown it once. '
-      + 'Bone opened with the Bürger’s dash to f5, and Ash answered f10–f9: one step, not three. '
-      + 'It looks careful. It is fatal — that pawn now stands on his own Krone’s escape road. '
-      + 'Both your Kanzler see through the window the dash opened. Send one across the whole '
-      + 'board: e1 to j6.',
+    text: 'One famous trap before you go — every beginner is shown it once. Bone opened with the '
+      + 'Bürger’s dash to f5, and Ash answered f10–f9: one step, not three. It looks careful. It '
+      + 'is fatal — that pawn now blocks his own Krone’s Flucht up the f-file, and the dash to '
+      + 'f5 has opened the long diagonals in front of both your Kanzler. Send one across the '
+      + 'whole board: e1 to j6.',
     setup: { initial: true, moves: ['f2-f5', 'f10-f9'] },
     marks: ['f9'],
     expect: { from: 'e1', to: ['j6'], hint: 'Slide the Kanzler the full diagonal — e1 to j6. (g1–b6 would mirror it.)' },
   },
   {
     title: 'The Door Is Bolted',
-    text: 'Look at the Ash Krone’s standing: every neighbour is his own court, and the one empty '
-      + 'door — f10 — your Kanzler claims from ten squares away. His Flucht? Blocked by his own '
-      + 'careful pawn on f9. Isolation is judged at the start of his turn, before any piece may '
-      + 'act: the game ended on move two. Dash fully or not at all — and mind whose road your '
-      + 'pawns stand on.',
+    text: 'Look at the Ash Krone: every neighbouring square is filled by his own court, and the '
+      + 'one empty door — f10 — your Kanzler threatens from ten squares away. His Flucht escape '
+      + 'is blocked by his own careful pawn on f9. Isolation is judged at the start of his turn, '
+      + 'before any piece may act: the game ended on move two. Dash fully or not at all — and '
+      + 'never leave a pawn standing on your own Krone’s escape route.',
     setup: null,
     escapes: true,
     arrows: [['j6', 'f10']],

@@ -86,6 +86,7 @@
         <p id="tutor-text" class="tutor-text"></p>
         <div class="tutor-actions">
           <button id="btn-tutor-exit" class="btn mini ghost">Leave the Primer</button>
+          <button id="btn-tutor-back" class="btn mini ghost hidden">Back</button>
           <button id="btn-tutor-next" class="btn mini primary">Continue</button>
         </div>
       </div>
@@ -201,7 +202,7 @@
 
       <h3>The pieces</h3>
       <ul>
-        <li><strong><span class="rule-ico" data-piece="1"></span> Krone</strong> — one square in any direction. Never captured; see Isolation.</li>
+        <li><strong><span class="rule-ico" data-piece="1"></span> Krone</strong> — one square in any direction, onto open ground only. Never captured, and never captures; see Isolation.</li>
         <li><strong><span class="rule-ico" data-piece="2"></span> Kanzler</strong> (×2) — any distance in any direction. Each side has two, flanking the Krone from the first move.</li>
         <li><strong><span class="rule-ico" data-piece="3"></span> Marschall</strong> — any distance orthogonally.</li>
         <li><strong><span class="rule-ico" data-piece="4"></span> Prälat</strong> — any distance diagonally.</li>
@@ -219,8 +220,11 @@
         <li>Either the Krone's own square is directly threatened by an enemy piece, or at least one adjacent square that is <em>genuinely empty</em> — held by no piece of either colour — is threatened by an enemy piece.</li>
       </ol>
       <p>An enemy threat against a square already filled by the Krone's own court counts for nothing — that door was never going to open for him regardless. Only two things end a Krone's reign: a blade genuinely at his own throat, or a genuinely empty door that the enemy, and the enemy alone, has nailed shut. A Krone is never undone by his own house alone — he is undone by his own house under siege, and it makes no difference that his own men built most of the wall.</p>
+      <p><strong>The Krone is judged as if already lifted from his square.</strong> Every threat that concerns his movement or survival is tested as though he were not standing where he stands: a Kanzler bearing directly upon him threatens the ground behind him just as surely as the ground before him. A king does not shelter a doorway with his own body.</p>
       <p><strong>The Krone cannot be taken.</strong> No move may capture a Krone — it is simply not a legal move, exactly as landing on the Aschenstuhl is not. A Krone may stand indefinitely on a threatened square; only Isolation ends his part in the game.</p>
+      <p><strong>The Krone takes no one.</strong> The courtesy is returned: the Krone may never capture, and moves only onto open ground. Kronspiel permits no reaction — a Krone does not answer a wall by tearing a brick from it, and an enemy piece at his elbow is simply part of the wall.</p>
       <p><strong>There is no rescue.</strong> Isolation is judged before the court is given leave to act. A piece that could have captured the offending enemy, or blocked its line, does not save him — the move that would have done it always comes one turn too late. The one safeguard the rules provide: you may never voluntarily make a move that isolates your own Krone, just as the Krone may never step into an enemy's line.</p>
+      <p><strong>The Palsied Court.</strong> A player with no legal move at all — Krone included — loses at once, provided the enemy has a hand in it by the test above: a blade at the Krone's throat, or a threat against a genuinely empty square beside him. Paralysed under siege is fallen. Without any enemy touch, it is instead the Frozen Court, and drawn.</p>
 
       <h3>Draws</h3>
       <ul>
@@ -228,6 +232,7 @@
         <li><strong>The Long Winter</strong> — fifty moves by each side with no Bürger moved and no capture; either player may claim.</li>
         <li><strong>The Empty Court</strong> — lone Krone against lone Krone; drawn automatically.</li>
         <li><strong>Mutual Ruin</strong> — both Krone isolated at the start of the same round; drawn, and considered the most honest outcome the board can produce.</li>
+        <li><strong>The Frozen Court</strong> — no legal move remains, yet no enemy hand touches the wall: the court has choked itself still, alone. Drawn automatically.</li>
         <li><strong>Parley</strong> — a draw agreed between the players at any point.</li>
       </ul>
 

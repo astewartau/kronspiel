@@ -145,16 +145,36 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
   const legal = genLegal(state(b));
   ok(!legal.some(m => m.from === idx(0, 5) && m.to === idx(0, 4)), 'Krone may not step into an enemy line');
   ok(legal.some(m => m.from === idx(0, 5) && m.to === idx(0, 6)), 'Krone may step to a safe square');
-  // Krone can capture an undefended adjacent piece
+  // The Krone takes no one (§6): even an undefended adjacent piece is safe from him
   const b2 = emptyBoard();
   b2[idx(0, 5)] = KRONE * BONE;
   b2[idx(1, 5)] = BURGER * ASH;
   b2[idx(10, 5)] = KRONE * ASH;
-  ok(genLegal(state(b2)).some(m => m.from === idx(0, 5) && m.to === idx(1, 5)), 'Krone captures undefended piece');
-  // ...but not a defended one
-  const b3 = new Int8Array(b2);
-  b3[idx(2, 6)] = BURGER * ASH; // defends e2? pawn at g3 (ash) attacks f2 — ash pawn moves -r, attacks (r-1,c±1) → (1,5) yes
-  ok(!genLegal(state(b3)).some(m => m.from === idx(0, 5) && m.to === idx(1, 5)), 'Krone may not capture a defended piece');
+  ok(!genPseudo(b2, BONE, false).some(m => m.from === idx(0, 5) && m.to === idx(1, 5)),
+    'the Krone may never capture, even an undefended piece');
+}
+
+// --- the lifted Krone (§6) ------------------------------------------------
+{
+  // Krone e1 walled above by his own pawns; an Ash Marschall on a1 bears down
+  // the rank, through the Krone's own square. d1 is genuinely empty and
+  // threatened; f1, behind him, only LOOKS safe — the moment he steps off e1
+  // the line follows. Judged with the Krone lifted, f1 is closed: isolated.
+  const b = emptyBoard();
+  b[idx(0, 4)] = KRONE * BONE;    // e1
+  b[idx(1, 3)] = BURGER * BONE;   // d2
+  b[idx(1, 4)] = BURGER * BONE;   // e2
+  b[idx(1, 5)] = BURGER * BONE;   // f2
+  b[idx(0, 0)] = MARSCHALL * ASH; // a1: b1, c1, d1, e1 — and f1, once he moves
+  b[idx(10, 10)] = KRONE * ASH;
+  const info = isolationInfo(b, BONE, false, true);
+  ok(info.enemyTouch, 'lifted test: blade at the throat down the rank');
+  ok(!info.open.includes(idx(0, 5)), 'lifted test: the square behind the Krone is not shelter');
+  ok(info.isolated, 'lifted test: a Krone cannot hide an escape square behind his own body');
+  // sanity: without the Marschall he is fine
+  const b2 = new Int8Array(b);
+  b2[idx(0, 0)] = EMPTY;
+  ok(!isolationInfo(b2, BONE, false, true).isolated, 'lifted test: no enemy, no isolation');
 }
 
 // --- Isolation ----------------------------------------------------------
@@ -231,6 +251,43 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
   const legal = genLegal(state(b));
   ok(!legal.some(m => m.from === idx(0, 4) && m.to === idx(0, 1)), 'may not voluntarily isolate own Krone');
   ok(legal.some(m => m.from === idx(0, 4)), 'rook still has other moves');
+}
+
+// --- the Palsied Court and the Frozen Court --------------------------------
+{
+  // Bone: Krone a1 and one hopelessly blocked Bürger a2 (an Ash Marschall
+  // squats on a3). b1 is threatened (Marschall k1 down the rank), b2 is a
+  // genuinely open door — so the Krone is NOT isolated. But stepping onto b2
+  // is self-isolation (a1/b1/c1 swept by k1, b3/c3 by a3, c2 by the Gesandter
+  // on b4), so it is not a legal move. No legal move + enemy touch = palsy.
+  const b = emptyBoard();
+  b[idx(0, 0)] = KRONE * BONE;      // a1
+  b[idx(1, 0)] = BURGER * BONE;     // a2, blocked
+  b[idx(2, 0)] = MARSCHALL * ASH;   // a3
+  b[idx(0, 10)] = MARSCHALL * ASH;  // k1
+  b[idx(3, 1)] = GESANDTER * ASH;   // b4: covers c2
+  b[idx(10, 10)] = KRONE * ASH;
+  const st = state(b, BONE);
+  const info = isolationInfo(b, BONE, false, true);
+  ok(!info.isolated && info.open.includes(idx(1, 1)), 'palsy: b2 is a real open door, no isolation');
+  ok(info.enemyTouch, 'palsy: the enemy hand is on the wall');
+  const legal = genLegal(st);
+  ok(legal.length === 0, 'palsy: yet no legal move remains');
+  const r = turnStartResult(st, legal);
+  ok(r && r.type === 'palsy' && r.loser === BONE, 'a court palsied under siege has fallen');
+
+  // The same paralysis with no enemy touch anywhere is the Frozen Court: a draw.
+  const b2 = emptyBoard();
+  b2[idx(0, 0)] = KRONE * BONE;
+  b2[idx(1, 0)] = BURGER * BONE;    // a2 own
+  b2[idx(1, 1)] = BURGER * BONE;    // b2 own
+  b2[idx(0, 1)] = MARSCHALL * BONE; // b1 own — fully self-walled, no touch
+  b2[idx(10, 10)] = KRONE * ASH;
+  const st2 = state(b2, BONE);
+  const info2 = isolationInfo(b2, BONE, false, true);
+  ok(!info2.isolated && !info2.enemyTouch, 'frozen: self-walled, no enemy touch');
+  const r2 = turnStartResult(st2, []);
+  ok(r2 && r2.type === 'frozen', 'a court frozen by its own hand alone is drawn');
 }
 
 // --- the Krone cannot be taken --------------------------------------------
