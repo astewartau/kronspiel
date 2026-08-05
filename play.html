@@ -25,6 +25,12 @@
 </div>
 <div class="app">
 
+  <div id="mobile-top" class="mobile-top">
+    <button id="btn-menu" class="mtop-btn" aria-label="Open menu">☰</button>
+    <a href="index.html" class="mtop-title">Kronspiel</a>
+    <span class="mtop-spacer" aria-hidden="true"></span>
+  </div>
+
   <header class="masthead">
     <div class="masthead-inner">
       <div class="title-block">
@@ -99,16 +105,25 @@
         <div id="winter-clock" class="winter-clock hidden"></div>
       </div>
 
-      <div class="controls">
-        <button id="btn-undo" class="btn">Undo</button>
-        <button id="btn-flip" class="btn">Flip Board</button>
-        <button id="btn-parley" class="btn">Offer Parley</button>
-        <button id="btn-resign" class="btn danger">Resign</button>
+      <div id="sheet-controls" class="m-sheet">
+        <div class="controls">
+          <button id="btn-undo" class="btn">Undo</button>
+          <button id="btn-flip" class="btn">Flip Board</button>
+          <button id="btn-parley" class="btn">Offer Parley</button>
+          <button id="btn-resign" class="btn danger">Resign</button>
+        </div>
+        <button id="btn-annotate" class="btn annotate-start">Annotate the Board</button>
+        <div id="claims" class="claims hidden">
+          <button id="btn-siege" class="btn claim hidden">Claim the Long Siege</button>
+          <button id="btn-winter" class="btn claim hidden">Claim the Long Winter</button>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="chk-escapes">
+          <span>Show the Krone's escape squares</span>
+        </label>
       </div>
 
-      <button id="btn-annotate" class="btn annotate-start">Annotate</button>
-
-      <div id="annotate-bar" class="annotate-bar hidden">
+      <div id="annotate-bar" class="annotate-bar m-sheet hidden">
         <div class="anno-row" role="group" aria-label="Annotation tools">
           <button class="atool active" data-tool="arrow" title="Draw an arrow — drag from one square to another">Arrow</button>
           <button class="atool" data-tool="highlight" title="Highlight a square — click it">Highlight</button>
@@ -136,7 +151,7 @@
         </div>
       </div>
 
-      <div id="editor-bar" class="editor-bar hidden">
+      <div id="editor-bar" class="editor-bar m-sheet hidden">
         <div class="editor-head">Puzzle Editor</div>
         <p class="editor-hint">Pick a piece, then click a square to place it. Drag a piece to move it. Choose Erase to clear squares.</p>
         <div class="palette" id="palette-bone" aria-label="Bone pieces"></div>
@@ -171,7 +186,7 @@
         </div>
       </div>
 
-      <div id="replay-bar" class="replay-bar hidden">
+      <div id="replay-bar" class="replay-bar m-sheet hidden">
         <div class="replay-head"><span class="editor-head">Replay</span><span id="replay-name" class="replay-name"></span></div>
         <div class="replay-move" id="replay-move"></div>
         <div class="replay-nav">
@@ -191,26 +206,16 @@
         <div class="anno-row">
           <button id="btn-rp-share" class="btn mini" title="Copy a shareable replay code">Share</button>
           <button id="btn-rp-newgame" class="btn mini">New Game</button>
-          <button id="btn-rp-exit" class="btn mini ghost">Close</button>
         </div>
+        <button id="btn-rp-exit" class="btn mini ghost rp-close">Close Replay</button>
       </div>
 
-      <div id="claims" class="claims hidden">
-        <button id="btn-siege" class="btn claim hidden">Claim the Long Siege</button>
-        <button id="btn-winter" class="btn claim hidden">Claim the Long Winter</button>
-      </div>
-
-      <label class="toggle">
-        <input type="checkbox" id="chk-escapes">
-        <span>Show the Krone's escape squares</span>
-      </label>
-
-      <div class="log-card">
+      <div class="log-card m-sheet" id="sheet-chronicle">
         <h2 class="with-action">Chronicle <button id="btn-export" class="btn mini" title="Copy the game record as text">Copy</button></h2>
         <ol id="movelog" class="movelog"></ol>
       </div>
 
-      <div class="log-card chat-card hidden" id="chat-card">
+      <div class="log-card chat-card m-sheet hidden" id="chat-card">
         <h2>Parlour</h2>
         <div id="chatlog" class="chatlog"></div>
         <form id="chat-form" class="chat-form">
@@ -221,6 +226,23 @@
     </aside>
 
   </main>
+
+  <nav id="mobile-tabs" class="mobile-tabs" aria-label="Board menus"></nav>
+
+  <!-- Compact menu (mobile) — the top actions tucked behind one button -->
+  <div class="overlay hidden" id="ov-menu">
+    <div class="dialog menu-dialog">
+      <h2>Kronspiel</h2>
+      <div class="menu-actions">
+        <button class="btn primary" data-menu="btn-new">New Game</button>
+        <button class="btn" data-menu="btn-rules">The Rules</button>
+        <button class="btn" data-menu="btn-puzzle">Puzzle Editor</button>
+        <button class="btn" data-menu="btn-annals">The Annals</button>
+        <button class="btn" data-menu="btn-options">Options</button>
+      </div>
+      <button class="btn ghost" id="btn-menu-close">Close</button>
+    </div>
+  </div>
 
   <footer class="colophon">
     <p>“You need not kill a king to finish him. You need only see that he has nowhere left to stand.”</p>
@@ -355,6 +377,13 @@
       </div>
     </div>
     <div class="pieceset-preview" id="pieceset-preview"></div>
+    <div class="field">
+      <span class="field-label">Board coordinates</span>
+      <div class="seg" id="seg-labels">
+        <button data-v="show" class="seg-btn active">Show</button>
+        <button data-v="hide" class="seg-btn">Hide — larger board</button>
+      </div>
+    </div>
     <div class="dialog-actions">
       <button class="btn primary" id="btn-options-close">Close</button>
     </div>

@@ -20,7 +20,7 @@ const PREFS_KEY = 'kronspiel-prefs-v1';
 // ---------------------------------------------------------------------------
 
 let settings = { mode: 'hotseat', humanSide: BONE, level: 'courtier' };
-let prefs = { pieceSet: 'sigils' };
+let prefs = { pieceSet: 'sigils' }; // boardLabels left unset → device default (hidden on mobile)
 let hist = [];          // engine states, hist[hist.length-1] is current
 let logEntries = [];    // [{ply, side, text}]
 let capturedBy = { [BONE]: [], [ASH]: [] }; // piece types captured BY each side
@@ -739,8 +739,17 @@ function savePrefs() {
 function loadPrefs() {
   try {
     const o = JSON.parse(localStorage.getItem(PREFS_KEY));
-    if (o && PIECE_SETS[o.pieceSet]) prefs = o;
+    if (o && PIECE_SETS[o.pieceSet]) prefs = { ...prefs, ...o };
   } catch { /* keep defaults */ }
+}
+
+const isMobileView = () => window.matchMedia('(max-width: 900px)').matches;
+// Default: labels shown on desktop, hidden on mobile (for a larger board) — until
+// the user makes an explicit choice in Options, which then holds on every device.
+const showLabels = () => prefs.boardLabels ?? !isMobileView();
+
+function applyBoardLabels() {
+  document.body.classList.toggle('no-board-labels', !showLabels());
 }
 
 function load() {
@@ -1201,16 +1210,28 @@ function renderAnno() {
   annoOver.innerHTML = annoOverMarkup(true);
 }
 
+// On phones the tool panels dock at the bottom; frame the board when a mode opens.
+function frameBoardOnMobile() {
+  if (window.matchMedia('(max-width: 900px)').matches) {
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  }
+}
+
 function setAnnotating(on) {
   annotating = on;
   ensureAnnoLayer();
+  if (on) frameBoardOnMobile();
   if (!on) removeLabelInput();
   $('annotate-bar').classList.toggle('hidden', !on);
   $('btn-annotate').classList.toggle('active', on);
   annoOver.classList.toggle('active', on);
   boardEl.classList.toggle('annotating', on);
+  document.body.classList.toggle('annotating', on); // lets mobile dock the tools as a sheet
   if (on) { selection = null; if (viewing) replayRender(); else paint(); }
   renderAnno();
+  if (on) openSheet('annotate');
+  else if (openSheetName === 'annotate') closeSheet();
+  refreshTabBar();
 }
 
 function selectAnnoTool(tool, glyph) {
@@ -1501,6 +1522,8 @@ function enterEditor(fromCurrent) {
   selection = null;
   syncEditControls();
   editRender();
+  frameBoardOnMobile();
+  openSheet('editor');
 }
 
 function exitEditorUi() {
@@ -1509,6 +1532,7 @@ function exitEditorUi() {
   document.body.classList.remove('editing');
   $('editor-bar').classList.add('hidden');
   $('btn-puzzle').classList.remove('active');
+  closeSheet();
 }
 
 function exitEditor() {
@@ -1785,6 +1809,8 @@ function startReplay(cfg) {
   loadStepAnno(replay.step);
   loadCommentary(replay.step);
   replayRender();
+  frameBoardOnMobile();
+  openSheet('replay');
 }
 
 function openReplayFromEntry(entry) {
@@ -1826,6 +1852,7 @@ function leaveViewingUi() {
   document.body.classList.remove('viewing');
   $('replay-bar').classList.add('hidden');
   clearAnno();
+  closeSheet();
 }
 
 function exitReplay() {
@@ -2079,6 +2106,72 @@ function initAnnals() {
 }
 
 // ---------------------------------------------------------------------------
+// Mobile app shell — a persistent bottom tab bar and pull-up sheets. The board
+// stays fixed in one spot; controls, the Chronicle, the Parlour, and the
+// editor / annotate / replay modes are all sheets. Inert on desktop.
+// ---------------------------------------------------------------------------
+
+const SHEET_IDS = {
+  controls: 'sheet-controls', chronicle: 'sheet-chronicle', chat: 'chat-card',
+  annotate: 'annotate-bar', editor: 'editor-bar', replay: 'replay-bar',
+};
+let openSheetName = null;
+
+// The tabs offered depend on context: a live game, the editor, or a replay.
+function mobileTabs() {
+  if (editing) return [['editor', '✦', 'Editor']];
+  if (viewing) return [['replay', '⏵', 'Replay'], ['annotate', '✎', 'Draw']];
+  const tabs = [['controls', '⚔', 'Controls'], ['chronicle', '❦', 'Chronicle']];
+  if (isOnline()) tabs.push(['chat', '✉', 'Parlour']);
+  tabs.push(['annotate', '✎', 'Draw']);
+  return tabs;
+}
+
+function refreshTabBar() {
+  const bar = $('mobile-tabs');
+  if (!bar) return;
+  bar.innerHTML = mobileTabs().map(([name, ico, label]) =>
+    `<button class="mtab${openSheetName === name ? ' active' : ''}" data-sheet="${name}">` +
+    `<span class="mt-ico" aria-hidden="true">${ico}</span>${label}</button>`).join('');
+}
+
+function openSheet(name) {
+  if (openSheetName && openSheetName !== name) $(SHEET_IDS[openSheetName])?.classList.remove('m-open');
+  $(SHEET_IDS[name])?.classList.add('m-open');
+  openSheetName = name;
+  refreshTabBar();
+}
+function closeSheet(name) {
+  if (name && openSheetName !== name) return; // only close the named one
+  if (openSheetName) $(SHEET_IDS[openSheetName])?.classList.remove('m-open');
+  openSheetName = null;
+  refreshTabBar();
+}
+function toggleSheet(name) { openSheetName === name ? closeSheet() : openSheet(name); }
+
+function initMobileShell() {
+  $('mobile-tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('.mtab');
+    if (!b) return;
+    const name = b.dataset.sheet;
+    if (name === 'annotate' && !annotating) { setAnnotating(true); return; } // enters mode, which opens the sheet
+    toggleSheet(name);
+  });
+  window.matchMedia('(max-width: 900px)').addEventListener?.('change', () => { closeSheet(); applyBoardLabels(); });
+
+  // The ☰ top-bar menu just fires the real (desktop) nav buttons.
+  $('btn-menu').addEventListener('click', () => $('ov-menu').classList.remove('hidden'));
+  $('btn-menu-close').addEventListener('click', () => $('ov-menu').classList.add('hidden'));
+  $('ov-menu').addEventListener('click', (e) => {
+    if (e.target === $('ov-menu')) { $('ov-menu').classList.add('hidden'); return; }
+    const b = e.target.closest('[data-menu]');
+    if (b) { $('ov-menu').classList.add('hidden'); $(b.dataset.menu).click(); }
+  });
+
+  refreshTabBar();
+}
+
+// ---------------------------------------------------------------------------
 // Online play
 // ---------------------------------------------------------------------------
 
@@ -2091,7 +2184,9 @@ function showChat(on) {
     document.body.classList.remove('chat-open');
     chatUnread = 0;
     paintChatUnread();
+    if (openSheetName === 'chat') closeSheet();
   }
+  refreshTabBar(); // the Parlour tab appears/vanishes with the online table
 }
 
 function paintChatUnread() {
@@ -2552,9 +2647,10 @@ function wireUi() {
   $('btn-export').addEventListener('click', copyRecord);
 
   $('btn-options').addEventListener('click', () => {
-    const seg = $('seg-pieces');
-    seg.querySelectorAll('.seg-btn').forEach((b) =>
+    $('seg-pieces').querySelectorAll('.seg-btn').forEach((b) =>
       b.classList.toggle('active', b.dataset.v === prefs.pieceSet));
+    $('seg-labels').querySelectorAll('.seg-btn').forEach((b) =>
+      b.classList.toggle('active', b.dataset.v === (showLabels() ? 'show' : 'hide')));
     paintPieceSetPreview();
     $('ov-options').classList.remove('hidden');
   });
@@ -2564,6 +2660,11 @@ function wireUi() {
     savePrefs();
     paintPieceSetPreview();
     applyPieceSet();
+  });
+  wireSeg('seg-labels', (v) => {
+    prefs.boardLabels = v === 'show';
+    savePrefs();
+    applyBoardLabels();
   });
 
   $('btn-confirm-no').addEventListener('click', () => {
@@ -2625,6 +2726,7 @@ function wireUi() {
   initAnnotate();
   initEditor();
   initAnnals();
+  initMobileShell();
 }
 
 // ---------------------------------------------------------------------------
@@ -2632,6 +2734,7 @@ function wireUi() {
 // ---------------------------------------------------------------------------
 
 loadPrefs();
+applyBoardLabels();
 wireUi();
 const restored = load();
 if (!restored) {
