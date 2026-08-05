@@ -27,9 +27,12 @@
 
 * { box-sizing: border-box; }
 
+html { overflow-x: clip; } /* guard against sub-pixel horizontal scroll on mobile */
+
 html, body {
   margin: 0;
   padding: 0;
+  max-width: 100%;
   background:
     radial-gradient(1200px 700px at 50% -10%, #262015 0%, transparent 60%),
     radial-gradient(900px 600px at 90% 110%, #1c150d 0%, transparent 55%),
@@ -309,6 +312,8 @@ h1 {
   padding: 1px 9px;
   background: rgba(200, 162, 74, 0.04);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;   /* keep "N escapes" on one line */
+  flex: 0 0 auto;
 }
 .escape-badge.tight {
   color: var(--ember-soft);
@@ -330,7 +335,15 @@ h1 {
   opacity: 0.85;
   min-height: 24px;
   text-align: right;
+  /* Never wrap the fallen pieces to a second line — scroll the strip instead,
+     so the plaque keeps a fixed height. */
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.captured::-webkit-scrollbar { display: none; }
 .captured .bone-piece { color: var(--piece-bone); text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
 .captured .ash-piece { color: #322b23; text-shadow: 0 0 2px rgba(243,236,220,0.4); }
 
@@ -592,6 +605,12 @@ svg.tut-arrows polygon { fill: rgba(232, 201, 106, 0.85); }
 .anno-over.active text[data-label-i] { pointer-events: auto; cursor: move; }
 .board.annotating .sq { cursor: crosshair; }
 
+/* On touch, a drag on the board must not scroll or zoom the page — the drag owns it. */
+.anno-over.active,
+.board.annotating,
+body.editing .board,
+body.viewing .board { touch-action: none; }
+
 /* Inline label entry — themed, not a system prompt */
 .anno-input {
   position: absolute;
@@ -769,8 +788,18 @@ svg.tut-arrows polygon { fill: rgba(232, 201, 106, 0.85); }
 }
 .ed-lib-del:hover { border-color: var(--ember-soft); color: var(--ember-soft); }
 
-.ed-actions { gap: 6px; }
-.ed-actions .btn { flex: 1 1 auto; }
+/* Uniform button rows — equal-width columns so the controls read as a tidy grid,
+   not a haphazard wrap. Excludes the labelled "to move" and Flucht rows. */
+.editor-bar .anno-row:not(.ed-inline):not(.ed-fluchts) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+}
+.editor-bar .anno-row .btn,
+.editor-bar .anno-row .atool { width: 100%; }
+/* The two primary actions stack full-width — Play stands out, Done sits beneath. */
+.ed-actions { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 2px; }
 
 .prompt-form { display: flex; flex-direction: column; gap: 16px; margin-top: 4px; }
 .prompt-form .text-input { width: 100%; }
@@ -1001,6 +1030,10 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
   position: sticky;
   top: 18px;
 }
+
+/* On desktop the controls group is transparent — its children flow in the
+   sidebar exactly as before. On mobile it becomes a bottom sheet. */
+#sheet-controls { display: contents; }
 
 .status-card, .log-card {
   position: relative;
@@ -1613,34 +1646,147 @@ body.focus.chat-open #chat-card .chatlog { max-height: 38dvh; }
 
 /* ---------- responsive ---------- */
 
+/* The bottom tab bar exists only in the mobile app shell. */
+.mobile-tabs { display: none; }
+
+/* The slim mobile top bar exists only in the app shell. */
+.mobile-top { display: none; }
+/* Board coordinate labels can be hidden from Options (all sizes). */
+body.no-board-labels .ranks,
+body.no-board-labels .files { display: none; }
+
 @media (max-width: 900px) {
-  :root { --board-max: min(94vw - 40px, 66dvh); }
-  .table { flex-direction: column; align-items: center; }
-  .sidebar { width: var(--board-max); position: static; }
-  .masthead-inner { flex-direction: column; align-items: center; text-align: center; }
-  .movelog { max-height: 200px; }
-  .focus-btn { display: flex; }
+  /* ============================================================
+     Mobile app shell — focus on the board. It stays fixed in one
+     spot; the title/menu collapse into a slim top bar, and every
+     control lives in a bottom sheet pulled from the tab bar. No
+     page scrolling: the app fills the viewport exactly.
+     ============================================================ */
+
+  html, body { height: 100%; }
+  body { overflow: hidden; overscroll-behavior: none; }
+
+  .app {
+    height: 100dvh;
+    display: flex; flex-direction: column;
+    padding: 0 6px 58px;   /* reserve the tab bar */
+    overflow: hidden;
+  }
+
+  /* Slim top bar replaces the whole masthead. */
+  .masthead, .colophon, .focus-btn { display: none; }
+  .mobile-top {
+    display: grid; grid-template-columns: 44px 1fr 44px; align-items: center;
+    flex: 0 0 auto; height: 46px;
+  }
+  .mtop-btn {
+    width: 44px; height: 44px; background: none; border: none; cursor: pointer;
+    color: var(--gold-bright); font-size: 20px; line-height: 1;
+  }
+  .mtop-title {
+    text-align: center; text-decoration: none;
+    font-family: "Cinzel Decorative", "Cinzel", serif; font-weight: 700;
+    font-size: 18px; letter-spacing: 0.12em; color: var(--gold);
+  }
+
+  /* The board area fills all space between the top bar and the tab bar. */
+  .table { flex: 1 1 auto; min-height: 0; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 2px 0; }
+  .board-column { gap: 5px; }
+
+  /* Frame off on mobile — the board runs nearly edge to edge. */
+  .board-frame { padding: 0; border: none; background: none; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); border-radius: 2px; }
+  .board-frame::before { display: none; }
+  .bf-corner { display: none; }
+  .board-inner { gap: 4px; }
+  .board { border: 1px solid #0d0a07; }
+  .ranks { width: 12px; font-size: 9px; }
+  .files { height: 12px; font-size: 9px; }
+
+  /* Board size: whichever of width / remaining-height is smaller. */
+  :root { --board-max: min(100vw - 34px, calc(100dvh - 240px)); }
+  body.no-board-labels { --board-max: min(100vw - 18px, calc(100dvh - 224px)); }
+
+  /* Slim plaques & status line. */
+  .player-bar { width: var(--board-max); min-height: 30px; padding: 2px 8px; gap: 8px; }
+  .court-name { font-size: 12px; }
+  .court-sigil { font-size: 18px; }
+  .escape-badge { font-size: 11px; }
+  .captured { font-size: 15px; }
+  .captured svg.sigil { width: 14px; height: 14px; }
+  .status-card { width: var(--board-max); padding: 5px 10px; }
+  .status { font-size: 13px; }
+  .substatus { font-size: 12px; max-height: 2.6em; overflow: hidden; }
+
+  /* The sidebar keeps only the status line (and Primer) in flow; the rest are sheets. */
+  .sidebar { width: var(--board-max); position: static; gap: 6px; display: flex; flex-direction: column; }
+  #sheet-controls { display: flex; flex-direction: column; gap: 10px; }
+  #sheet-controls .controls { grid-template-columns: 1fr 1fr; }
+
+  /* A sheet: docked above the tab bar, slid away until opened. */
+  .m-sheet {
+    position: fixed; left: 0; right: 0; bottom: 58px; z-index: 44;
+    width: auto; margin: 0;
+    max-height: min(66dvh, calc(100dvh - 130px));
+    overflow-y: auto;
+    padding: 22px 14px calc(16px + env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, #1c1813 0%, #14100b 100%);
+    border: 1px solid var(--panel-edge); border-bottom: none;
+    border-top: 2px solid var(--gold-deep);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.66);
+    transform: translateY(120%);
+    transition: transform 0.28s cubic-bezier(0.25, 0.9, 0.3, 1);
+    visibility: hidden;
+  }
+  .m-sheet.m-open:not(.hidden) { transform: none; visibility: visible; }
+  .m-sheet.hidden { display: none; }
+  .m-sheet::before {
+    content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 44px; height: 4px; border-radius: 2px; background: #4a4030;
+  }
+  #tutor-card.m-sheet:not(.hidden) { transform: none; visibility: visible; }
+  .movelog { max-height: 46dvh; }
+
+  /* The tab bar — the persistent bottom menu. */
+  .mobile-tabs {
+    display: flex; gap: 1px;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 46;
+    height: 58px; padding-bottom: env(safe-area-inset-bottom);
+    background: linear-gradient(180deg, #1a1610 0%, #100d09 100%);
+    border-top: 1px solid var(--panel-edge);
+    box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.5);
+  }
+  .mtab {
+    flex: 1 1 0; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    background: none; border: none; cursor: pointer; color: var(--ink-dim);
+    font-family: "Cinzel", serif; font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase;
+    transition: color 0.15s;
+  }
+  .mtab .mt-ico { font-size: 18px; line-height: 1; }
+  .mtab.active { color: var(--gold-bright); }
+  .mtab.active .mt-ico { filter: drop-shadow(0 0 7px rgba(200, 162, 74, 0.55)); }
+
+  /* Compact menu dialog (behind the top-bar ☰). */
+  .menu-dialog { max-width: 320px; }
+  .menu-actions { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 14px; }
+  .menu-actions .btn { width: 100%; padding: 12px; }
 }
 
-@media (max-width: 600px) {
-  :root { --board-max: min(100vw - 28px, 62dvh); }
-  .app { padding: 0 8px; }
-  .masthead { padding: 14px 0 6px; }
-  .masthead-inner { padding-bottom: 12px; gap: 8px; }
-  h1 { font-size: 26px; }
-  .tagline { font-size: 13px; }
-  .btn { padding: 8px 12px; font-size: 12px; }
-  .player-bar { min-height: 34px; padding: 3px 8px; }
-  .court-name { font-size: 12.5px; }
-  .escape-badge { font-size: 11.5px; }
-  .captured { font-size: 16px; }
-  .captured svg.sigil { width: 14px; height: 14px; }
-  .board-frame { padding: 8px; }
-  .board-frame::before { inset: 3px; }
-  .bf-corner { display: none; }
-  .colophon { font-size: 12.5px; padding-bottom: 76px; }
+/* Dialogs on phones: tighter padding, and action buttons stack full-width so a
+   long label (e.g. "First Time? The Primer") never runs off the screen. */
+@media (max-width: 560px) {
+  .dialog { padding: 22px 18px; }
+  .dialog h2 { font-size: 18px; }
+  .dialog-actions { flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .dialog-actions .btn { flex: 1 1 100%; width: 100%; }
+  .netwait .dialog-actions .btn, .dialog.gameover .dialog-actions .btn { flex-basis: 100%; }
+}
+
+@media (max-width: 380px) {
+  :root { --board-max: min(100vw - 30px, calc(100dvh - 236px)); }
+  .mtab { font-size: 9.5px; }
   .embers span { display: none; }
-  .embers span:nth-child(-n+4) { display: block; }
 }
 
 /* ---------- reduced motion ---------- */
