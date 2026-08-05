@@ -4,10 +4,10 @@ import {
   N, ASCH, EMPTY, KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER, BONE, ASH,
   idx, rowOf, colOf, sqName, GLYPHS,
   initialState, genPseudo, genLegal, apply, make, attacked, turnStartResult,
-  claimableDraws, isolationInfo, notateBody, serialize, deserialize,
+  claimableDraws, isolationInfo, notateBody, serialize, deserialize, positionKey,
 } from './engine.js';
 import { findBestMove, quickEval, OPENINGS } from './ai.js';
-import { PIECE_SETS, pieceHTML } from './pieces.js';
+import { PIECE_SETS, pieceHTML, sigilInner } from './pieces.js';
 import { Net, makeCode, normalizeCode } from './net.js';
 import { LESSONS, buildTutState, sqOf } from './tutorial.js';
 
@@ -101,6 +101,7 @@ function layoutBoard() {
   $('ranks').innerHTML = rankSeq.map((r) => `<span>${r}</span>`).join('');
   syncPieces();
   paint();
+  renderAnno(); // square-anchored marks follow the flip
 }
 
 function placePiece(el, sq) {
@@ -353,6 +354,7 @@ function paintLog() {
 // ---------------------------------------------------------------------------
 
 function onBoardClick(e) {
+  if (annotating || editing || viewing) return; // annotate / edit / replay modes own the board
   const sqEl = e.target.closest('.sq');
   if (!sqEl || result || aiThinking) return;
   if (settings.mode === 'ai' && cur().turn !== settings.humanSide) return;
@@ -430,6 +432,7 @@ function illegalHint(from, to) {
 function playMove(m, fromRemote = false) {
   const before = cur();
   noticeText = null;
+  clearAnno(); // a fresh position wipes any lingering marks
   if (isOnline() && !fromRemote) {
     net?.send({ t: 'move', m: { from: m.from, to: m.to }, ply: before.ply });
   }
@@ -555,6 +558,7 @@ function showGameOver() {
   const rematch = $('btn-over-rematch');
   rematch.classList.toggle('hidden', !isOnline() || !net?.connected);
   rematch.disabled = false;
+  $('btn-over-review').classList.toggle('hidden', hist.length < 2); // nothing to review without moves
   $('ov-over').classList.remove('hidden');
   $('btn-show-result').classList.add('hidden');
 }
@@ -613,6 +617,8 @@ function scheduleAiMove() {
 
 function newGame(fresh) {
   if (fresh) {
+    if (viewing) leaveViewingUi();
+    clearAnno();
     hist = [initialState()];
     logEntries = [];
     capturedBy = { [BONE]: [], [ASH]: [] };
@@ -973,6 +979,1106 @@ async function copyRecord() {
 }
 
 // ---------------------------------------------------------------------------
+// Annotation — arrows, highlights, labels and move-quality marks over the board,
+// plus a copy-image-to-clipboard export. Pure overlay: it never touches game state.
+// ---------------------------------------------------------------------------
+
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+// Move-quality marks (chess NAGs). Each renders as a coloured corner badge.
+const NAGS = {
+  '!!': { fill: '#1aada6' }, // brilliant
+  '!':  { fill: '#7aa64d' }, // good
+  '!?': { fill: '#9a7fc0' }, // interesting
+  '?!': { fill: '#d9963a' }, // dubious
+  '?':  { fill: '#d97a34' }, // mistake
+  '??': { fill: '#c33b2f' }, // blunder
+};
+
+let annotating = false;
+let annoTool = 'arrow';   // 'arrow' | 'highlight' | 'text' | 'glyph'
+let annoGlyph = '!!';     // active move-quality mark when annoTool === 'glyph'
+let annoColor = '#e8c96a';
+let anno = null;          // { arrows, highlights, glyphs, texts } — see clearAnno
+let annoUnder = null;     // arrows + highlights, drawn BELOW the pieces
+let annoOver = null;      // glyphs + labels + the interactive surface, ABOVE the pieces
+let annoDrag = null;      // { fromSq, x, y } while dragging an arrow
+let labelDrag = null;     // { i, offx, offy } while dragging a label
+let annoInput = null;     // the inline label <input>, while one is open
+
+function clearAnno() {
+  anno = { arrows: [], highlights: [], glyphs: [], texts: [] };
+  removeLabelInput();
+  if (annoOver) renderAnno();
+}
+
+// Two overlays: arrows/highlights sit under the pieces so a piece never has an
+// arrow tail drawn across it; glyphs/labels sit above, and carry the pointer
+// interaction. Both share the board's 0..110 coordinate space.
+function ensureAnnoLayer() {
+  if (annoOver) return;
+  annoUnder = document.createElementNS(SVGNS, 'svg');
+  annoUnder.setAttribute('class', 'anno-layer anno-under');
+  annoOver = document.createElementNS(SVGNS, 'svg');
+  annoOver.setAttribute('class', 'anno-layer anno-over');
+  for (const svg of [annoUnder, annoOver]) {
+    svg.setAttribute('viewBox', '0 0 110 110');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    boardEl.appendChild(svg);
+  }
+  annoOver.addEventListener('pointerdown', onAnnoDown);
+  annoOver.addEventListener('pointermove', onAnnoMove);
+  annoOver.addEventListener('pointerup', onAnnoUp);
+  annoOver.addEventListener('pointerleave', () => { annoDrag = null; labelDrag = null; renderAnno(); });
+}
+
+// Board index / display-space point from a pointer event.
+function annoPointAt(e) {
+  const rect = boardEl.getBoundingClientRect();
+  const x = clamp(((e.clientX - rect.left) / rect.width) * 110, 0, 110);
+  const y = clamp(((e.clientY - rect.top) / rect.height) * 110, 0, 110);
+  const dc = clamp(Math.floor(x / 10), 0, N - 1);
+  const dr = clamp(Math.floor(y / 10), 0, N - 1);
+  return { x, y, sq: dispToSq(dr, dc) };
+}
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const capturePointer = (el, id) => { try { el.setPointerCapture?.(id); } catch {} };
+
+function onAnnoDown(e) {
+  if (!annotating) return;
+  e.preventDefault();
+  // Grabbing an existing label to move it takes precedence over any tool.
+  const labelEl = e.target.closest?.('[data-label-i]');
+  if (labelEl) {
+    const i = +labelEl.dataset.labelI;
+    const p = annoPointAt(e);
+    labelDrag = { i, offx: anno.texts[i].x - p.x, offy: anno.texts[i].y - p.y };
+    capturePointer(annoOver, e.pointerId);
+    return;
+  }
+  capturePointer(annoOver, e.pointerId);
+  const p = annoPointAt(e);
+  if (annoTool === 'arrow') annoDrag = { fromSq: p.sq, x: p.x, y: p.y };
+}
+
+function onAnnoMove(e) {
+  if (!annotating) return;
+  if (labelDrag) {
+    const p = annoPointAt(e);
+    const t = anno.texts[labelDrag.i];
+    t.x = clamp(p.x + labelDrag.offx, 0, 110);
+    t.y = clamp(p.y + labelDrag.offy, 0, 110);
+    renderAnno();
+    return;
+  }
+  if (annoDrag) {
+    const p = annoPointAt(e);
+    annoDrag.x = p.x; annoDrag.y = p.y;
+    renderAnno();
+  }
+}
+
+function onAnnoUp(e) {
+  if (!annotating) return;
+  if (labelDrag) { labelDrag = null; renderAnno(); return; }
+  const p = annoPointAt(e);
+  if (annoTool === 'arrow') {
+    if (annoDrag && annoDrag.fromSq !== p.sq) {
+      anno.arrows.push({ from: annoDrag.fromSq, to: p.sq, color: annoColor });
+    }
+    annoDrag = null;
+  } else if (annoTool === 'highlight') {
+    const i = anno.highlights.findIndex((h) => h.sq === p.sq);
+    if (i >= 0 && anno.highlights[i].color === annoColor) anno.highlights.splice(i, 1);
+    else if (i >= 0) anno.highlights[i].color = annoColor;
+    else anno.highlights.push({ sq: p.sq, color: annoColor });
+  } else if (annoTool === 'glyph') {
+    const i = anno.glyphs.findIndex((g) => g.sq === p.sq);
+    if (i >= 0 && anno.glyphs[i].kind === annoGlyph) anno.glyphs.splice(i, 1);
+    else if (i >= 0) anno.glyphs[i].kind = annoGlyph;
+    else anno.glyphs.push({ sq: p.sq, kind: annoGlyph });
+  } else if (annoTool === 'text') {
+    openLabelInput(p.x, p.y);
+    return; // the input commits the label
+  }
+  renderAnno();
+}
+
+// Inline, themed text entry — no system prompt. Enter commits, Escape cancels,
+// clicking away commits whatever was typed.
+function openLabelInput(x, y) {
+  removeLabelInput();
+  const inp = document.createElement('input');
+  inp.className = 'anno-input';
+  inp.type = 'text';
+  inp.maxLength = 40;
+  inp.style.left = (x / 110 * 100) + '%';
+  inp.style.top = (y / 110 * 100) + '%';
+  inp.style.setProperty('--ink', annoColor);
+  let done = false; // Enter, Escape and blur can all fire — commit at most once
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const v = inp.value.trim();
+    if (v) anno.texts.push({ x, y, text: v, color: annoColor });
+    removeLabelInput();
+    renderAnno();
+  };
+  inp.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); done = true; removeLabelInput(); }
+  });
+  inp.addEventListener('blur', commit);
+  boardEl.appendChild(inp);
+  annoInput = inp;
+  setTimeout(() => inp.focus(), 0);
+}
+
+function removeLabelInput() {
+  const inp = annoInput;
+  annoInput = null;
+  if (inp && inp.parentNode) inp.parentNode.removeChild(inp);
+}
+
+// Arrows + highlights (+ the in-progress arrow), drawn beneath the pieces.
+function annoUnderMarkup(includePreview) {
+  const parts = [];
+  for (const h of anno.highlights) {
+    const { dr, dc } = sqToDisp(h.sq);
+    parts.push(`<rect x="${dc * 10 + 0.6}" y="${dr * 10 + 0.6}" width="8.8" height="8.8" rx="1"
+      fill="${h.color}" fill-opacity="0.3" stroke="${h.color}" stroke-opacity="0.85" stroke-width="0.7"/>`);
+  }
+  for (const a of anno.arrows) {
+    const A = sqToDisp(a.from), B = sqToDisp(a.to);
+    parts.push(arrowMarkup(A.dc * 10 + 5, A.dr * 10 + 5, B.dc * 10 + 5, B.dr * 10 + 5, a.color));
+  }
+  if (includePreview && annoDrag) {
+    const A = sqToDisp(annoDrag.fromSq);
+    parts.push(arrowMarkup(A.dc * 10 + 5, A.dr * 10 + 5, annoDrag.x, annoDrag.y, annoColor));
+  }
+  return parts.join('');
+}
+
+// Move-quality badges + draggable labels, drawn above the pieces. `interactive`
+// adds the transparent catcher and the data hooks needed to grab labels.
+function annoOverMarkup(interactive) {
+  const parts = [];
+  if (interactive) parts.push('<rect class="anno-catch" x="0" y="0" width="110" height="110" fill="transparent"/>');
+  for (const g of anno.glyphs) {
+    const { dr, dc } = sqToDisp(g.sq);
+    const cx = dc * 10 + 8, cy = dr * 10 + 2.2, fill = (NAGS[g.kind] || {}).fill || '#c33b2f';
+    parts.push(`<circle cx="${cx}" cy="${cy}" r="2.5" fill="${fill}" stroke="#0d0a07" stroke-width="0.4"/>`);
+    parts.push(`<text class="anno-nag-text" x="${cx}" y="${cy + 0.15}" font-size="${g.kind.length > 1 ? 2.1 : 3}"
+      text-anchor="middle" dominant-baseline="central">${g.kind}</text>`);
+  }
+  anno.texts.forEach((t, i) => {
+    parts.push(`<text class="anno-label" ${interactive ? `data-label-i="${i}"` : ''} x="${t.x}" y="${t.y}" font-size="4"
+      text-anchor="middle" dominant-baseline="central" fill="${t.color}">${escXml(t.text)}</text>`);
+  });
+  return parts.join('');
+}
+
+// A gold-halo arrow, matching the Primer's arrow geometry but caller-coloured.
+function arrowMarkup(ax, ay, bx, by, color) {
+  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  bx -= ux * 3.2; by -= uy * 3.2;
+  const head = 3.2;
+  const hx = bx - ux * head, hy = by - uy * head;
+  const px = -uy * head * 0.62, py = ux * head * 0.62;
+  return `<g class="halo"><line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke-width="3.2" stroke-linecap="round"/></g>` +
+    `<line x1="${ax}" y1="${ay}" x2="${hx}" y2="${hy}" stroke="${color}" stroke-width="1.7" stroke-linecap="round"/>` +
+    `<polygon points="${bx},${by} ${hx + px},${hy + py} ${hx - px},${hy - py}" fill="${color}"/>`;
+}
+
+function escXml(s) {
+  return s.replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function renderAnno() {
+  if (!annoOver) return;
+  annoUnder.innerHTML = annoUnderMarkup(true);
+  annoOver.innerHTML = annoOverMarkup(true);
+}
+
+function setAnnotating(on) {
+  annotating = on;
+  ensureAnnoLayer();
+  if (!on) removeLabelInput();
+  $('annotate-bar').classList.toggle('hidden', !on);
+  $('btn-annotate').classList.toggle('active', on);
+  annoOver.classList.toggle('active', on);
+  boardEl.classList.toggle('annotating', on);
+  if (on) { selection = null; if (viewing) replayRender(); else paint(); }
+  renderAnno();
+}
+
+function selectAnnoTool(tool, glyph) {
+  annoTool = tool;
+  if (glyph) annoGlyph = glyph;
+  for (const b of $('annotate-bar').querySelectorAll('.atool')) {
+    b.classList.toggle('active',
+      tool === 'glyph' ? (b.dataset.glyph === annoGlyph) : (b.dataset.tool === tool && !b.dataset.glyph));
+  }
+}
+
+function annoUndo() {
+  // No global ordering is kept, so undo peels marks off in a fixed priority:
+  // freeform first (labels, then glyphs), then square fills, then arrows.
+  const bucket = anno.texts.length ? anno.texts
+    : anno.glyphs.length ? anno.glyphs
+    : anno.highlights.length ? anno.highlights
+    : anno.arrows;
+  if (!bucket.length) return;
+  bucket.pop();
+  renderAnno();
+}
+
+// The position currently on the board — the replay step while viewing, else live.
+function displayState() {
+  return viewing && replay ? replay.states[replay.step] : cur();
+}
+
+// Render the whole board — squares, pieces, and annotations — into one SVG,
+// then rasterise it to a PNG and copy it to the clipboard.
+function buildBoardSvg() {
+  const state = displayState();
+  const cells = [];
+  for (let disp = 0; disp < N * N; disp++) {
+    const dr = Math.floor(disp / N), dc = disp % N;
+    const sq = dispToSq(dr, dc);
+    let fill = '#c7b89d';
+    if (sq === ASCH) fill = '#17130f';
+    else if ((rowOf(sq) + colOf(sq)) % 2 === 0) fill = '#514a40';
+    cells.push(`<rect x="${dc * 10}" y="${dr * 10}" width="10" height="10" fill="${fill}"/>`);
+    if (sq === ASCH) {
+      cells.push(`<text x="${dc * 10 + 5}" y="${dr * 10 + 5.4}" font-size="5.2" text-anchor="middle"
+        dominant-baseline="central" fill="rgba(200,162,74,0.32)">♛</text>`);
+    }
+  }
+
+  const pieceParts = [];
+  const useSigils = prefs.pieceSet === 'sigils';
+  for (let sq = 0; sq < N * N; sq++) {
+    const v = state.board[sq];
+    if (v === EMPTY) continue;
+    const { dr, dc } = sqToDisp(sq);
+    const cls = v > 0 ? 'bone' : 'ash';
+    if (useSigils) {
+      pieceParts.push(`<g class="p ${cls}" transform="translate(${dc * 10 + 1} ${dr * 10 + 1}) scale(0.08)">${sigilInner(Math.abs(v))}</g>`);
+    } else {
+      const col = v > 0 ? '#f3ecdc' : '#211c17';
+      pieceParts.push(`<text x="${dc * 10 + 5}" y="${dr * 10 + 5.4}" font-size="8" text-anchor="middle"
+        dominant-baseline="central" fill="${col}" font-family="Georgia, serif">${GLYPHS[Math.abs(v)]}</text>`);
+    }
+  }
+
+  return `<svg xmlns="${SVGNS}" width="792" height="792" viewBox="0 0 110 110">
+    <style>
+      .p { stroke-width: 3; stroke-linejoin: round; }
+      .p.bone { fill: #f3ecdc; stroke: #453b2c; }
+      .p.ash { fill: #211c17; stroke: rgba(243,236,220,0.6); }
+      .p.bone .accent { fill: #453b2c; stroke: none; }
+      .p.ash .accent { fill: #cbbfa8; stroke: none; }
+      .halo { stroke: rgba(0,0,0,0.45); }
+      .anno-label { font-family: Georgia, serif; font-weight: 600; paint-order: stroke; stroke: rgba(0,0,0,0.65); stroke-width: 0.7; stroke-linejoin: round; }
+      .anno-nag-text { font-family: "Trebuchet MS", sans-serif; font-weight: 800; fill: #fff; }
+    </style>
+    <rect x="0" y="0" width="110" height="110" fill="#0d0a07"/>
+    ${cells.join('')}
+    ${annoUnderMarkup(false)}
+    ${pieceParts.join('')}
+    ${annoOverMarkup(false)}
+  </svg>`;
+}
+
+async function copyAnnotatedImage() {
+  const blob = await new Promise((resolve, reject) => {
+    const svg = buildBoardSvg();
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 792; canvas.height = 792;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, 792, 792);
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('encode'))), 'image/png');
+    };
+    img.onerror = () => reject(new Error('render'));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    noticeText = 'The board is copied — paste the image where you will.';
+  } catch {
+    // Clipboard images aren't universally allowed; fall back to a download.
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'kronspiel-board.png';
+    a.click();
+    URL.revokeObjectURL(url);
+    noticeText = 'The clipboard was withheld — the board was saved as an image instead.';
+  }
+  paintStatus();
+}
+
+function initAnnotate() {
+  clearAnno();
+  $('btn-annotate').addEventListener('click', () => setAnnotating(!annotating));
+  $('btn-anno-done').addEventListener('click', () => setAnnotating(false));
+  $('btn-anno-undo').addEventListener('click', annoUndo);
+  $('btn-anno-clear').addEventListener('click', clearAnno);
+  $('btn-anno-copy').addEventListener('click', copyAnnotatedImage);
+  for (const b of $('annotate-bar').querySelectorAll('.atool')) {
+    b.addEventListener('click', () => selectAnnoTool(b.dataset.tool, b.dataset.glyph));
+  }
+  for (const b of $('annotate-bar').querySelectorAll('.aswatch')) {
+    b.addEventListener('click', () => {
+      annoColor = b.dataset.color;
+      $('annotate-bar').querySelectorAll('.aswatch').forEach((s) => s.classList.toggle('active', s === b));
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Puzzle editor — a free-placement workbench. Build any position, then play it,
+// share it as a code, or save it to a local library. Never runs the AI/online.
+// ---------------------------------------------------------------------------
+
+const PUZZLE_KEY = 'kronspiel-puzzles-v1';
+const PIECE_TYPES = [KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER];
+
+let editing = false;
+let editState = null;                          // { board:Int8Array, turn, flucht }
+let editBrush = { side: BONE, type: KRONE, erase: false };
+let editDrag = null;                           // { fromSq, sx, sy, moved, val }
+let editGhost = null;                          // the piece element riding the cursor mid-drag
+
+function buildPalette(id, side) {
+  const host = $(id);
+  host.innerHTML = '';
+  for (const type of PIECE_TYPES) {
+    const b = document.createElement('button');
+    b.className = `ed-pc-btn ed-brush ${side === BONE ? 'bone-piece' : 'ash-piece'}`;
+    b.dataset.side = side;
+    b.dataset.type = type;
+    b.title = PIECE_NAMES_LOCAL[type];
+    b.innerHTML = pieceHTML(prefs.pieceSet, type);
+    host.appendChild(b);
+  }
+}
+const PIECE_NAMES_LOCAL = {
+  [KRONE]: 'Krone', [KANZLER]: 'Kanzler', [MARSCHALL]: 'Marschall',
+  [PRALAT]: 'Prälat', [GESANDTER]: 'Gesandter', [BURGER]: 'Bürger',
+};
+
+function selectBrush(btn) {
+  editBrush = btn.dataset.erase
+    ? { erase: true }
+    : { side: +btn.dataset.side, type: +btn.dataset.type, erase: false };
+  for (const b of $('editor-bar').querySelectorAll('.ed-brush')) b.classList.toggle('active', b === btn);
+}
+
+function editSqFromEvent(e) {
+  const rect = boardEl.getBoundingClientRect();
+  const dc = clamp(Math.floor((e.clientX - rect.left) / (rect.width / N)), 0, N - 1);
+  const dr = clamp(Math.floor((e.clientY - rect.top) / (rect.height / N)), 0, N - 1);
+  return dispToSq(dr, dc);
+}
+
+function onEditDown(e) {
+  if (!editing) return;
+  if (!e.target.closest('.sq')) return;
+  e.preventDefault();
+  capturePointer(boardEl, e.pointerId);
+  const fromSq = editSqFromEvent(e);
+  editDrag = { fromSq, sx: e.clientX, sy: e.clientY, moved: false, val: editState.board[fromSq] };
+}
+
+function onEditMove(e) {
+  if (!editing || !editDrag) return;
+  if (!editDrag.moved && Math.hypot(e.clientX - editDrag.sx, e.clientY - editDrag.sy) > 6) {
+    editDrag.moved = true;
+    if (editDrag.val !== EMPTY) startEditGhost(editDrag.val, editDrag.fromSq); // lift the piece onto the cursor
+  }
+  if (editDrag.moved && editGhost) positionEditGhost(e.clientX, e.clientY);
+}
+
+function onEditUp(e) {
+  if (!editing || !editDrag) return;
+  removeEditGhost();
+  const toSq = editSqFromEvent(e);
+  const { fromSq, moved } = editDrag;
+  editDrag = null;
+  const b = editState.board;
+  if (moved && fromSq !== toSq && b[fromSq] !== EMPTY) {
+    if (toSq !== ASCH) { b[toSq] = b[fromSq]; b[fromSq] = EMPTY; } // relocate a piece
+  } else if (toSq !== ASCH) {
+    b[toSq] = editBrush.erase ? EMPTY : editBrush.type * editBrush.side; // stamp the brush
+  }
+  editRender();
+}
+
+// A piece that rides the cursor while dragging, so it clearly moves with you.
+function startEditGhost(val, fromSq) {
+  removeEditGhost();
+  const size = boardEl.getBoundingClientRect().width / N;
+  editGhost = document.createElement('div');
+  editGhost.className = 'ed-ghost piece ' + (val > 0 ? 'bone-piece' : 'ash-piece');
+  editGhost.style.width = size + 'px';
+  editGhost.style.height = size + 'px';
+  editGhost.innerHTML = pieceHTML(prefs.pieceSet, Math.abs(val));
+  document.body.appendChild(editGhost);
+  const src = pieceEls.get(fromSq); // dim the square it left
+  if (src) src.style.opacity = '0.25';
+}
+function positionEditGhost(x, y) {
+  editGhost.style.left = x + 'px';
+  editGhost.style.top = y + 'px';
+}
+function removeEditGhost() {
+  if (editGhost) { editGhost.remove(); editGhost = null; }
+}
+
+function editRender() {
+  piecesEl.innerHTML = '';
+  pieceEls = new Map();
+  for (let i = 0; i < N * N; i++) {
+    if (editState.board[i] !== EMPTY) pieceEls.set(i, makePieceEl(editState.board[i], i));
+  }
+  for (const el of squares) {
+    const sq = +el.dataset.sq;
+    el.className = 'sq ' + (sq === ASCH ? 'asch' : (rowOf(sq) + colOf(sq)) % 2 === 1 ? 'bone' : 'ash');
+  }
+  editValidate();
+}
+
+function editValidate() {
+  const b = editState.board;
+  let bk = 0, ak = 0;
+  for (let i = 0; i < N * N; i++) {
+    if (b[i] === KRONE * BONE) bk++;
+    else if (b[i] === KRONE * ASH) ak++;
+  }
+  const ok = bk === 1 && ak === 1;
+  const st = $('ed-status');
+  if (ok) {
+    st.textContent = 'A valid position — ready to play.';
+    st.className = 'ed-status ok';
+  } else {
+    const parts = [];
+    if (bk !== 1) parts.push(`Bone needs one Krone (has ${bk})`);
+    if (ak !== 1) parts.push(`Ash needs one Krone (has ${ak})`);
+    st.textContent = parts.join(' · ');
+    st.className = 'ed-status warn';
+  }
+  $('btn-ed-play').disabled = !ok;
+  return ok;
+}
+
+function syncEditControls() {
+  $('ed-turn').querySelectorAll('.seg-btn').forEach((btn) =>
+    btn.classList.toggle('active', (btn.dataset.v === 'ash') === (editState.turn === ASH)));
+  $('ed-flucht-bone').checked = !!editState.flucht[BONE];
+  $('ed-flucht-ash').checked = !!editState.flucht[ASH];
+}
+
+function enterEditor(fromCurrent) {
+  if (isOnline()) { noticeText = 'Leave the online table before opening the editor.'; paintStatus(); return; }
+  if (viewing) leaveViewingUi();
+  setAnnotating(false);
+  editing = true;
+  editState = {
+    board: fromCurrent ? new Int8Array(cur().board) : new Int8Array(N * N),
+    turn: fromCurrent ? cur().turn : BONE,
+    flucht: fromCurrent
+      ? { [BONE]: cur().flucht[BONE], [ASH]: cur().flucht[ASH] }
+      : { [BONE]: true, [ASH]: true },
+  };
+  document.body.classList.add('editing');
+  $('editor-bar').classList.remove('hidden');
+  $('btn-puzzle').classList.add('active');
+  selection = null;
+  syncEditControls();
+  editRender();
+}
+
+function exitEditorUi() {
+  editing = false;
+  editDrag = null;
+  document.body.classList.remove('editing');
+  $('editor-bar').classList.add('hidden');
+  $('btn-puzzle').classList.remove('active');
+}
+
+function exitEditor() {
+  exitEditorUi();
+  syncPieces(); // restore the real game's pieces and board
+  paint();
+}
+
+function playFromHere() {
+  if (!editValidate()) return;
+  leaveTutorial();
+  settings = { mode: 'hotseat', humanSide: BONE, level: 'courtier' };
+  const s = {
+    board: new Int8Array(editState.board),
+    turn: editState.turn,
+    flucht: { [BONE]: editState.flucht[BONE], [ASH]: editState.flucht[ASH] },
+    clock: 0,
+    reps: {},
+    ply: 0,
+  };
+  s.reps[positionKey(s)] = 1;
+  hist = [s];
+  logEntries = [];
+  capturedBy = { [BONE]: [], [ASH]: [] };
+  result = null;
+  lastMove = null;
+  selection = null;
+  aiThinking = false;
+  noticeText = null;
+  aiOpening = null;
+  exitEditorUi();
+  $('ov-over').classList.add('hidden');
+  $('btn-show-result').classList.add('hidden');
+  syncPieces();
+  afterPositionChange(); // runs genLegal, checks for an already-decided position, paints, saves
+}
+
+// Shareable position codes ---------------------------------------------------
+function editCode() {
+  const o = { b: Array.from(editState.board), t: editState.turn, f: [editState.flucht[BONE] ? 1 : 0, editState.flucht[ASH] ? 1 : 0] };
+  return 'KP1:' + btoa(JSON.stringify(o));
+}
+
+function applyCode(code) {
+  const o = JSON.parse(atob(String(code).trim().replace(/^KP1:/i, '')));
+  if (!Array.isArray(o.b) || o.b.length !== N * N) throw new Error('bad');
+  editState.board = Int8Array.from(o.b.map((v) => v | 0));
+  editState.turn = o.t === -1 ? ASH : BONE;
+  editState.flucht = { [BONE]: !!(o.f && o.f[0]), [ASH]: !!(o.f && o.f[1]) };
+  syncEditControls();
+  editRender();
+}
+
+// Local library --------------------------------------------------------------
+function getPuzzles() {
+  try { return JSON.parse(localStorage.getItem(PUZZLE_KEY)) || []; } catch { return []; }
+}
+function setPuzzles(list) {
+  try { localStorage.setItem(PUZZLE_KEY, JSON.stringify(list)); } catch {}
+}
+function initEditor() {
+  buildPalette('palette-bone', BONE);
+  buildPalette('palette-ash', ASH);
+
+  boardEl.addEventListener('pointerdown', onEditDown);
+  boardEl.addEventListener('pointermove', onEditMove);
+  boardEl.addEventListener('pointerup', onEditUp);
+
+  $('btn-puzzle').addEventListener('click', () => (editing ? exitEditor() : enterEditor(true)));
+  $('btn-ed-done').addEventListener('click', exitEditor);
+  $('btn-ed-play').addEventListener('click', playFromHere);
+
+  for (const b of $('editor-bar').querySelectorAll('.ed-brush')) {
+    b.addEventListener('click', () => selectBrush(b));
+  }
+  // Default brush: the Bone Krone (a natural first placement).
+  selectBrush($('palette-bone').querySelector('.ed-pc-btn'));
+
+  for (const btn of $('ed-turn').querySelectorAll('.seg-btn')) {
+    btn.addEventListener('click', () => {
+      editState.turn = btn.dataset.v === 'ash' ? ASH : BONE;
+      syncEditControls();
+    });
+  }
+  $('ed-flucht-bone').addEventListener('change', (e) => { editState.flucht[BONE] = e.target.checked; });
+  $('ed-flucht-ash').addEventListener('change', (e) => { editState.flucht[ASH] = e.target.checked; });
+
+  $('btn-ed-start').addEventListener('click', () => {
+    const init = initialState();
+    editState.board = new Int8Array(init.board);
+    editState.turn = BONE;
+    editState.flucht = { [BONE]: true, [ASH]: true };
+    syncEditControls();
+    editRender();
+  });
+  $('btn-ed-clear').addEventListener('click', () => {
+    editState.board = new Int8Array(N * N);
+    editRender();
+  });
+
+  $('btn-ed-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(editCode()); editStatusFlash('Position code copied to the clipboard.'); }
+    catch { editStatusFlash('Copying failed — the browser withheld the clipboard.'); }
+  });
+  $('btn-ed-save').addEventListener('click', async () => {
+    const name = await promptDialog({
+      title: 'Save to the Library',
+      note: 'Name this puzzle so you can find it later.',
+      placeholder: 'e.g. The Fool’s Gate',
+      ok: 'Save',
+    });
+    if (!name) return;
+    const list = getPuzzles();
+    list.push({ name, code: editCode() });
+    setPuzzles(list);
+    editStatusFlash('Saved to your puzzle library.');
+  });
+  $('btn-ed-library').addEventListener('click', () => { renderPuzzles(); $('ov-puzzles').classList.remove('hidden'); });
+
+  // Puzzle library modal
+  $('btn-puzzles-close').addEventListener('click', () => $('ov-puzzles').classList.add('hidden'));
+  $('ov-puzzles').addEventListener('click', (e) => { if (e.target === $('ov-puzzles')) $('ov-puzzles').classList.add('hidden'); });
+  $('btn-puzzles-load').addEventListener('click', async () => {
+    const code = await promptDialog({ title: 'Load a Shared Puzzle', note: 'Paste a Kronspiel position code (KP1:…).', placeholder: 'KP1:…', ok: 'Load' });
+    if (!code) return;
+    if (!editing) enterEditor(false);
+    try { applyCode(code); $('ov-puzzles').classList.add('hidden'); } catch { editStatusFlash('That code could not be read.'); }
+  });
+  $('puzzles-list').addEventListener('click', (e) => {
+    const open = e.target.closest('.annals-open');
+    const copy = e.target.closest('.annals-copy');
+    const del = e.target.closest('.annals-del');
+    if (open) {
+      const pz = getPuzzles()[+open.dataset.i];
+      if (pz) {
+        if (!editing) enterEditor(false);
+        try { applyCode(pz.code); $('ov-puzzles').classList.add('hidden'); } catch { editStatusFlash('That saved puzzle could not be read.'); }
+      }
+    } else if (copy) {
+      const pz = getPuzzles()[+copy.dataset.i];
+      if (pz) navigator.clipboard?.writeText(pz.code).then(() => flashButton(copy, '✓'), () => {});
+    } else if (del) {
+      const list = getPuzzles();
+      list.splice(+del.dataset.i, 1);
+      setPuzzles(list);
+      renderPuzzles();
+    }
+  });
+}
+
+function renderPuzzles() {
+  const list = getPuzzles();
+  const el = $('puzzles-list');
+  if (!list.length) { el.innerHTML = '<div class="annals-empty">No saved puzzles yet. Build a position and press Save.</div>'; return; }
+  el.innerHTML = list.map((pz, i) =>
+    `<div class="annals-row">
+      <button class="annals-open" data-i="${i}"><span class="an-name">${escXml(pz.name)}</span><span class="an-sub">Open in the editor</span></button>
+      <button class="annals-copy" data-i="${i}" title="Copy this puzzle's code">⧉</button>
+      <button class="annals-del" data-i="${i}" title="Delete">✕</button>
+    </div>`).join('');
+}
+
+// A transient message shown in the editor's status line (restores validation next render).
+function editStatusFlash(msg) {
+  const st = $('ed-status');
+  st.textContent = msg;
+  st.className = 'ed-status';
+  setTimeout(() => { if (editing) editValidate(); }, 2200);
+}
+
+// ---------------------------------------------------------------------------
+// The Annals — save finished games, then walk through them move by move and
+// annotate each position. A saved game keeps every serialized state, so replay
+// is a matter of stepping an index; per-ply annotations ride alongside.
+// ---------------------------------------------------------------------------
+
+const ANNALS_KEY = 'kronspiel-annals-v1';
+const ANNALS_MAX = 100;
+const EMPTY_ANNO = () => ({ arrows: [], highlights: [], glyphs: [], texts: [] });
+
+let viewing = false;
+let replay = null;        // { name, states, moves, log, notes, step, entryTs }
+let replayTimer = null;
+
+function getAnnals() {
+  try { return JSON.parse(localStorage.getItem(ANNALS_KEY)) || []; } catch { return []; }
+}
+function setAnnals(list) {
+  try { localStorage.setItem(ANNALS_KEY, JSON.stringify(list)); } catch {}
+}
+
+// Reconstruct each move's {from,to} by diffing consecutive states — enough to
+// highlight the move on the board without storing moves separately.
+function movesFromHist(states) {
+  const moves = [];
+  for (let k = 1; k < states.length; k++) {
+    const s = states[k - 1], t = states[k], side = s.turn;
+    let from = -1, to = -1;
+    for (let i = 0; i < N * N; i++) {
+      const before = Math.sign(s.board[i]) === side;
+      const after = Math.sign(t.board[i]) === side;
+      if (before && !after) from = i;
+      if (!before && after) to = i;
+    }
+    moves.push({ from, to });
+  }
+  return moves;
+}
+
+// Keep only the plies that actually carry annotations, so storage stays lean.
+function prunedNotes(notes) {
+  const out = {};
+  for (const [k, v] of Object.entries(notes)) {
+    if (v && (v.arrows.length || v.highlights.length || v.glyphs.length || v.texts.length)) out[k] = v;
+  }
+  return out;
+}
+
+function renderAnnals() {
+  const list = getAnnals();
+  const el = $('annals-list');
+  if (!list.length) { el.innerHTML = '<div class="annals-empty">The annals are empty. Finish a game and save it here.</div>'; return; }
+  el.innerHTML = list.map((g, i) => {
+    const when = new Date(g.ts).toLocaleString();
+    const plies = Math.max(0, (g.hist?.length || 1) - 1);
+    return `<div class="annals-row">
+      <button class="annals-open" data-i="${i}">
+        <span class="an-name">${escXml(g.name)}</span>
+        <span class="an-sub">${escXml(g.resultLabel)} · ${plies} plies · ${escXml(when)}</span>
+      </button>
+      <button class="annals-copy" data-i="${i}" title="Copy a shareable replay code">⧉</button>
+      <button class="annals-del" data-i="${i}" title="Delete">✕</button>
+    </div>`;
+  }).join('');
+}
+
+// Build a shareable KR1 replay code straight from a stored annals entry.
+function annalsEntryToCode(g) {
+  return 'KR1:' + b64enc(JSON.stringify({
+    n: g.name, m: g.mode, r: g.resultLabel, h: g.hist, l: g.log, no: g.notes || {}, co: g.commentary || {},
+  }));
+}
+
+// ---- The replay viewer ----
+// One machine serves two sources: a saved annals entry, or the game that just
+// finished (source 'live', not yet saved). Either can be annotated and saved.
+
+function startReplay(cfg) {
+  stopAutoplay();
+  if (editing) exitEditorUi();
+  setAnnotating(false);
+  viewing = true;
+  replay = {
+    postGame: !!cfg.postGame,      // the game that just ended (offers New Game)
+    entryTs: cfg.entryTs || null,  // annals key once saved; null until then
+    name: cfg.name,
+    mode: cfg.mode,
+    resultLabel: cfg.resultLabel,
+    states: cfg.states,
+    moves: movesFromHist(cfg.states),
+    log: cfg.log || [],
+    notes: cfg.notes ? JSON.parse(JSON.stringify(cfg.notes)) : {},
+    commentary: cfg.commentary ? { ...cfg.commentary } : {},
+    step: cfg.startAtEnd ? cfg.states.length - 1 : 0,
+  };
+  document.body.classList.add('viewing');
+  $('replay-bar').classList.remove('hidden');
+  $('btn-show-result').classList.add('hidden');
+  $('replay-name').textContent = cfg.resultLabel || '';
+  $('replay-name-input').value = cfg.name || '';
+  $('btn-rp-newgame').classList.toggle('hidden', !replay.postGame);
+  refreshSaveButton();
+  selection = null;
+  loadStepAnno(replay.step);
+  loadCommentary(replay.step);
+  replayRender();
+}
+
+function openReplayFromEntry(entry) {
+  startReplay({
+    entryTs: entry.ts,
+    name: entry.name,
+    mode: entry.mode,
+    resultLabel: entry.resultLabel,
+    states: entry.hist.map(deserialize),
+    log: entry.log,
+    notes: entry.notes,
+    commentary: entry.commentary,
+  });
+}
+
+// Review the game that just ended — no save required to walk or annotate it.
+function openPostGameReview() {
+  $('ov-over').classList.add('hidden');
+  startReplay({
+    postGame: true,
+    name: (result?.title || 'A Game') + ' · ' + new Date().toLocaleDateString(),
+    mode: settings.mode,
+    resultLabel: result ? result.label : 'Unfinished',
+    states: hist.map((s) => deserialize(serialize(s))), // detached copies
+    log: logEntries.slice(),
+    startAtEnd: true,
+  });
+}
+
+function refreshSaveButton() {
+  $('btn-rp-save').textContent = replay.entryTs ? 'Update the Annals' : 'Save to the Annals';
+}
+
+function leaveViewingUi() {
+  stopAutoplay();
+  setAnnotating(false);
+  viewing = false;
+  replay = null;
+  document.body.classList.remove('viewing');
+  $('replay-bar').classList.add('hidden');
+  clearAnno();
+}
+
+function exitReplay() {
+  const wasPostGame = replay?.postGame;
+  leaveViewingUi();
+  syncPieces();
+  paint();
+  if (wasPostGame && result) $('btn-show-result').classList.remove('hidden');
+}
+
+function stashStepAnno() {
+  if (replay) replay.notes[replay.step] = JSON.parse(JSON.stringify(anno));
+}
+function loadStepAnno(step) {
+  removeLabelInput();
+  anno = replay.notes[step] ? JSON.parse(JSON.stringify(replay.notes[step])) : EMPTY_ANNO();
+}
+function stashCommentary() {
+  if (replay) replay.commentary[replay.step] = $('replay-commentary').value;
+}
+function loadCommentary(step) {
+  $('replay-commentary').value = replay.commentary[step] || '';
+}
+
+function replayGoto(step) {
+  const total = replay.states.length - 1;
+  step = clamp(step, 0, total);
+  if (step === replay.step) return;
+  stashStepAnno();
+  stashCommentary();
+  const old = replay.step;
+  replay.step = step;
+  loadStepAnno(step);
+  loadCommentary(step);
+  // A single move slides the way live play does; larger jumps rebuild instantly.
+  if (Math.abs(step - old) !== 1 || !animateReplayStep(old, step)) rebuildReplayPieces();
+  paintReplayChrome();
+  renderAnno();
+}
+
+function rebuildReplayPieces() {
+  const st = replay.states[replay.step];
+  piecesEl.innerHTML = '';
+  pieceEls = new Map();
+  for (let i = 0; i < N * N; i++) {
+    if (st.board[i] !== EMPTY) pieceEls.set(i, makePieceEl(st.board[i], i));
+  }
+}
+
+// Slide the one piece that moved between adjacent steps, reusing its element so
+// the CSS transform transition animates it. Returns false to fall back to rebuild.
+function animateReplayStep(oldStep, newStep) {
+  const forward = newStep === oldStep + 1;
+  const m = forward ? replay.moves[oldStep] : replay.moves[newStep];
+  if (!m || m.from < 0 || m.to < 0) return false;
+  const after = replay.states[newStep];
+  const from = forward ? m.from : m.to; // where the mover currently sits
+  const to = forward ? m.to : m.from;   // where it lands
+  const el = pieceEls.get(from);
+  if (!el) return false;
+  const occ = pieceEls.get(to); // a captured piece (forward only)
+  if (occ) { occ.classList.add('captured-anim'); setTimeout(() => occ.remove(), 260); pieceEls.delete(to); }
+  el.classList.add('moving');
+  placePiece(el, to);
+  pieceEls.delete(from);
+  pieceEls.set(to, el);
+  setTimeout(() => {
+    if (pieceEls.get(to) !== el) return; // a later step overtook this one
+    el.classList.remove('moving');
+    if (after.board[to] !== EMPTY) el.innerHTML = pieceHTML(prefs.pieceSet, Math.abs(after.board[to]));
+  }, 230);
+  // Rewinding a capture: the taken piece returns to its square.
+  if (!forward && after.board[m.to] !== EMPTY) pieceEls.set(m.to, makePieceEl(after.board[m.to], m.to));
+  return true;
+}
+
+function paintReplayChrome() {
+  const lm = replay.step > 0 ? replay.moves[replay.step - 1] : null;
+  for (const el of squares) {
+    const sq = +el.dataset.sq;
+    let cls = 'sq ' + (sq === ASCH ? 'asch' : (rowOf(sq) + colOf(sq)) % 2 === 1 ? 'bone' : 'ash');
+    if (lm && sq === lm.from) cls += ' last-from';
+    if (lm && sq === lm.to) cls += ' last-to';
+    el.className = cls;
+  }
+  const total = replay.states.length - 1;
+  $('replay-count').textContent = `Move ${replay.step} of ${total}`;
+  const move = $('replay-move');
+  if (replay.step === 0) {
+    move.innerHTML = '<span class="dim">Starting position</span>';
+  } else {
+    const entry = replay.log[replay.step - 1];
+    const num = Math.floor((replay.step - 1) / 2) + 1;
+    move.innerHTML = '';
+    const n = document.createElement('span');
+    n.className = 'n';
+    n.textContent = num + (entry && entry.side === BONE ? '. ' : '… ');
+    move.append(n, entry ? logSpan(entry, entry.side === BONE ? 'bone-piece' : 'ash-piece') : document.createTextNode('—'));
+  }
+}
+
+function replayRender() {
+  rebuildReplayPieces();
+  paintReplayChrome();
+  renderAnno();
+}
+
+function stopAutoplay() {
+  if (replayTimer) { clearInterval(replayTimer); replayTimer = null; }
+  $('btn-rp-play').classList.remove('playing');
+  $('btn-rp-play').textContent = '▶';
+}
+function toggleAutoplay() {
+  if (replayTimer) { stopAutoplay(); return; }
+  if (replay.step >= replay.states.length - 1) replayGoto(0);
+  $('btn-rp-play').classList.add('playing');
+  $('btn-rp-play').textContent = '❚❚';
+  replayTimer = setInterval(() => {
+    if (replay.step >= replay.states.length - 1) { stopAutoplay(); return; }
+    replayGoto(replay.step + 1);
+  }, 950);
+}
+
+function prunedCommentary(commentary) {
+  const out = {};
+  for (const [k, v] of Object.entries(commentary)) if (v && v.trim()) out[k] = v;
+  return out;
+}
+const replayName = () => $('replay-name-input').value.trim() || replay.name || 'A Game';
+
+// Save (or update) the game being reviewed — with its per-ply annotations and prose.
+function saveReplay() {
+  stashStepAnno();
+  stashCommentary();
+  const list = getAnnals();
+  const payload = {
+    name: replayName(),
+    mode: replay.mode,
+    resultLabel: replay.resultLabel,
+    hist: replay.states.map(serialize),
+    log: replay.log,
+    notes: prunedNotes(replay.notes),
+    commentary: prunedCommentary(replay.commentary),
+  };
+  let entry = replay.entryTs ? list.find((x) => x.ts === replay.entryTs) : null;
+  if (entry) {
+    Object.assign(entry, payload);
+  } else {
+    entry = { ts: Date.now(), ...payload };
+    list.unshift(entry);
+    if (list.length > ANNALS_MAX) list.length = ANNALS_MAX;
+    replay.entryTs = entry.ts;
+    replay.postGame = false; // it now lives in the annals
+    $('btn-rp-newgame').classList.add('hidden');
+  }
+  setAnnals(list);
+  refreshSaveButton();
+  flashButton($('btn-rp-save'), 'Saved ✓');
+}
+
+// UTF-8-safe base64 (move notation and prose carry non-Latin1 glyphs).
+const b64enc = (s) => btoa(unescape(encodeURIComponent(s)));
+const b64dec = (s) => decodeURIComponent(escape(atob(s)));
+
+function shareReplay() {
+  stashStepAnno();
+  stashCommentary();
+  const payload = {
+    n: replayName(),
+    m: replay.mode,
+    r: replay.resultLabel,
+    h: replay.states.map(serialize),
+    l: replay.log,
+    no: prunedNotes(replay.notes),
+    co: prunedCommentary(replay.commentary),
+  };
+  const code = 'KR1:' + b64enc(JSON.stringify(payload));
+  navigator.clipboard?.writeText(code).then(
+    () => flashButton($('btn-rp-share'), 'Copied ✓'),
+    () => promptDialog({ title: 'Share this Replay', note: 'Copy this code and send it along.', value: code, ok: 'Done' }),
+  );
+}
+
+async function loadSharedReplay() {
+  const code = await promptDialog({ title: 'Load a Shared Replay', note: 'Paste a replay code (KR1:…).', placeholder: 'KR1:…', ok: 'Load' });
+  if (!code) return;
+  try {
+    const o = JSON.parse(b64dec(code.trim().replace(/^KR1:/i, '')));
+    if (!Array.isArray(o.h) || !o.h.length) throw new Error('bad');
+    $('ov-annals').classList.add('hidden');
+    startReplay({
+      name: o.n, mode: o.m, resultLabel: o.r,
+      states: o.h.map(deserialize),
+      log: o.l || [], notes: o.no || {}, commentary: o.co || {},
+    });
+  } catch {
+    renderAnnals();
+    $('annals-list').insertAdjacentHTML('afterbegin', '<div class="annals-empty">That replay code could not be read.</div>');
+  }
+}
+
+function flashButton(btn, msg) {
+  const was = btn.textContent;
+  btn.textContent = msg;
+  setTimeout(() => { if (btn.textContent === msg) btn.textContent = was; }, 1600);
+}
+
+function initAnnals() {
+  $('btn-annals').addEventListener('click', () => { renderAnnals(); $('ov-annals').classList.remove('hidden'); });
+  $('btn-annals-close').addEventListener('click', () => $('ov-annals').classList.add('hidden'));
+  $('ov-annals').addEventListener('click', (e) => { if (e.target === $('ov-annals')) $('ov-annals').classList.add('hidden'); });
+  $('btn-annals-load').addEventListener('click', loadSharedReplay);
+  $('btn-over-review').addEventListener('click', openPostGameReview);
+
+  $('annals-list').addEventListener('click', (e) => {
+    const open = e.target.closest('.annals-open');
+    const copy = e.target.closest('.annals-copy');
+    const del = e.target.closest('.annals-del');
+    if (open) {
+      const entry = getAnnals()[+open.dataset.i];
+      if (entry) { $('ov-annals').classList.add('hidden'); openReplayFromEntry(entry); }
+    } else if (copy) {
+      const g = getAnnals()[+copy.dataset.i];
+      if (g) navigator.clipboard?.writeText(annalsEntryToCode(g)).then(() => flashButton(copy, '✓'), () => {});
+    } else if (del) {
+      const list = getAnnals();
+      list.splice(+del.dataset.i, 1);
+      setAnnals(list);
+      renderAnnals();
+    }
+  });
+
+  $('btn-rp-first').addEventListener('click', () => { stopAutoplay(); replayGoto(0); });
+  $('btn-rp-prev').addEventListener('click', () => { stopAutoplay(); replayGoto(replay.step - 1); });
+  $('btn-rp-next').addEventListener('click', () => { stopAutoplay(); replayGoto(replay.step + 1); });
+  $('btn-rp-last').addEventListener('click', () => { stopAutoplay(); replayGoto(replay.states.length - 1); });
+  $('btn-rp-play').addEventListener('click', toggleAutoplay);
+  $('btn-rp-annotate').addEventListener('click', () => setAnnotating(!annotating));
+  $('btn-rp-save').addEventListener('click', saveReplay);
+  $('btn-rp-share').addEventListener('click', shareReplay);
+  $('btn-rp-newgame').addEventListener('click', () => { exitReplay(); $('btn-show-result').classList.add('hidden'); $('ov-new').classList.remove('hidden'); });
+  $('btn-rp-exit').addEventListener('click', exitReplay);
+  $('replay-commentary').addEventListener('input', stashCommentary);
+
+  document.addEventListener('keydown', (e) => {
+    if (!viewing || annoInput) return;
+    if (e.target === $('replay-commentary') || e.target === $('replay-name-input')) return; // typing
+    if (e.key === 'ArrowLeft') { stopAutoplay(); replayGoto(replay.step - 1); }
+    else if (e.key === 'ArrowRight') { stopAutoplay(); replayGoto(replay.step + 1); }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Online play
 // ---------------------------------------------------------------------------
 
@@ -1312,6 +2418,29 @@ function confirmDialog(title, text, onYes, onNo = null) {
   $('ov-confirm').classList.remove('hidden');
 }
 
+// Themed replacement for window.prompt — resolves to the trimmed string, or null
+// if cancelled. Wiring for the form lives in wireUi (see #ov-prompt handlers).
+let promptResolve = null;
+function promptDialog({ title, note = '', placeholder = '', value = '', ok = 'Confirm' }) {
+  $('prompt-title').textContent = title;
+  const noteEl = $('prompt-note');
+  noteEl.textContent = note;
+  noteEl.classList.toggle('hidden', !note);
+  const input = $('prompt-input');
+  input.value = value;
+  input.placeholder = placeholder;
+  $('btn-prompt-ok').textContent = ok;
+  $('ov-prompt').classList.remove('hidden');
+  setTimeout(() => { input.focus(); input.select(); }, 0);
+  return new Promise((resolve) => { promptResolve = resolve; });
+}
+function closePrompt(result) {
+  $('ov-prompt').classList.add('hidden');
+  const fn = promptResolve;
+  promptResolve = null;
+  if (fn) fn(result);
+}
+
 function wireSeg(id, onPick) {
   const seg = $(id);
   seg.addEventListener('click', (e) => {
@@ -1333,7 +2462,8 @@ function wireUi() {
   $('btn-new-start').addEventListener('click', () => {
     leaveTutorial();
     const mode = segValue('seg-mode');
-    if (mode === 'online') {
+    // "Online" now lives under Two Players → Where: Local / Online.
+    if (mode === 'hotseat' && segValue('seg-where') === 'online') {
       if (segValue('seg-net-role') === 'join') {
         const code = normalizeCode($('join-code').value);
         if (!code) { $('join-code').focus(); return; }
@@ -1357,18 +2487,24 @@ function wireUi() {
     newGame(true);
     layoutBoard();
   });
+  const newDlg = $('ov-new').querySelector('.dialog');
+  const syncOnlineFields = () => {
+    const online = segValue('seg-mode') === 'hotseat' && segValue('seg-where') === 'online';
+    newDlg.classList.toggle('mode-online', online);
+  };
   wireSeg('seg-mode', (v) => {
-    const dlg = $('ov-new').querySelector('.dialog');
-    dlg.classList.toggle('hide-ai', v !== 'ai');
-    dlg.classList.toggle('mode-online', v === 'online');
+    newDlg.classList.toggle('hide-ai', v !== 'ai');
+    newDlg.classList.toggle('mode-hotseat', v === 'hotseat');
+    syncOnlineFields();
   });
+  wireSeg('seg-where', syncOnlineFields);
   wireSeg('seg-side');
   wireSeg('seg-level');
   wireSeg('seg-net-role', (v) => {
-    $('ov-new').querySelector('.dialog').classList.toggle('role-join', v === 'join');
+    newDlg.classList.toggle('role-join', v === 'join');
   });
   wireSeg('seg-host-side');
-  $('ov-new').querySelector('.dialog').classList.add('hide-ai');
+  newDlg.classList.add('hide-ai', 'mode-hotseat');
 
   // Online: waiting overlay, chat, rematch
   $('btn-wait-cancel').addEventListener('click', () => {
@@ -1441,13 +2577,13 @@ function wireUi() {
     if (fn) fn();
   });
 
+  $('prompt-form').addEventListener('submit', (e) => { e.preventDefault(); closePrompt($('prompt-input').value.trim()); });
+  $('btn-prompt-cancel').addEventListener('click', () => closePrompt(null));
+  $('ov-prompt').addEventListener('click', (e) => { if (e.target === $('ov-prompt')) closePrompt(null); });
+
   $('btn-over-new').addEventListener('click', () => {
     $('ov-over').classList.add('hidden');
     $('ov-new').classList.remove('hidden');
-  });
-  $('btn-over-board').addEventListener('click', () => {
-    $('ov-over').classList.add('hidden');
-    $('btn-show-result').classList.remove('hidden');
   });
   $('btn-show-result').addEventListener('click', showGameOver);
 
@@ -1485,6 +2621,10 @@ function wireUi() {
       if (e.target === $(id)) $(id).classList.add('hidden');
     });
   }
+
+  initAnnotate();
+  initEditor();
+  initAnnals();
 }
 
 // ---------------------------------------------------------------------------
