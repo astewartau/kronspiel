@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Kronspiel — Crown-play</title>
+<meta name="description" content="Kronspiel: an 11×11 court-game of Isolation. A Krone is never captured — he is only isolated.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>♚</text></svg>">
+</head>
+<body>
+<div class="embers" aria-hidden="true">
+  <span style="--x:6%;  --d:16s; --dl:0s;   --s:3px; --drift:34px"></span>
+  <span style="--x:16%; --d:21s; --dl:-7s;  --s:2px; --drift:-22px"></span>
+  <span style="--x:28%; --d:18s; --dl:-3s;  --s:2px; --drift:18px"></span>
+  <span style="--x:41%; --d:24s; --dl:-12s; --s:3px; --drift:-30px"></span>
+  <span style="--x:55%; --d:17s; --dl:-5s;  --s:2px; --drift:26px"></span>
+  <span style="--x:67%; --d:22s; --dl:-15s; --s:3px; --drift:-18px"></span>
+  <span style="--x:78%; --d:19s; --dl:-9s;  --s:2px; --drift:30px"></span>
+  <span style="--x:88%; --d:25s; --dl:-2s;  --s:3px; --drift:-26px"></span>
+  <span style="--x:95%; --d:20s; --dl:-11s; --s:2px; --drift:14px"></span>
+</div>
+<div class="app">
+
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="title-block">
+        <h1><a href="index.html" class="home-link">Kronspiel</a></h1>
+        <p class="tagline">A Krone is never captured. He is only isolated.</p>
+      </div>
+      <nav class="top-actions">
+        <button id="btn-rules" class="btn ghost">Rules</button>
+        <button id="btn-puzzle" class="btn ghost">Puzzle</button>
+        <button id="btn-annals" class="btn ghost">Annals</button>
+        <button id="btn-options" class="btn ghost">Options</button>
+        <button id="btn-new" class="btn primary">New Game</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="table">
+
+    <section class="board-column">
+      <div class="focus-hud">
+        <button id="btn-focus-undo" class="btn mini">Undo</button>
+        <span id="focus-status"></span>
+        <button id="btn-focus-exit" class="btn mini">Exit</button>
+      </div>
+      <div class="player-bar" id="bar-top">
+        <span class="court-sigil ash">♛</span>
+        <span class="court-name" id="name-top">The Ash Court</span>
+        <span class="escape-badge" id="esc-top" title="Open escape squares around this Krone"></span>
+        <span class="captured" id="cap-top"></span>
+      </div>
+
+      <div class="board-frame">
+        <i class="bf-corner tl" aria-hidden="true"></i>
+        <i class="bf-corner tr" aria-hidden="true"></i>
+        <i class="bf-corner bl" aria-hidden="true"></i>
+        <i class="bf-corner br" aria-hidden="true"></i>
+        <div class="board-inner">
+          <div id="ranks" class="ranks"></div>
+          <div class="board-and-files">
+            <div id="board" class="board" aria-label="Kronspiel board">
+              <div id="pieces" class="pieces-layer"></div>
+              <div id="marks" class="marks-layer"></div>
+            </div>
+            <div id="files" class="files"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="player-bar" id="bar-bottom">
+        <span class="court-sigil bone">♛</span>
+        <span class="court-name" id="name-bottom">The Bone Court</span>
+        <span class="escape-badge" id="esc-bottom" title="Open escape squares around this Krone"></span>
+        <span class="captured" id="cap-bottom"></span>
+      </div>
+    </section>
+
+    <aside class="sidebar">
+      <div class="log-card tutor-card hidden" id="tutor-card">
+        <h2>The Primer <span id="tutor-step" class="tutor-step"></span></h2>
+        <h3 id="tutor-title" class="tutor-title"></h3>
+        <p id="tutor-text" class="tutor-text"></p>
+        <div class="tutor-actions">
+          <button id="btn-tutor-exit" class="btn mini ghost">Leave the Primer</button>
+          <button id="btn-tutor-back" class="btn mini ghost hidden">Back</button>
+          <button id="btn-tutor-next" class="btn mini primary">Continue</button>
+        </div>
+      </div>
+
+      <div class="status-card">
+        <div id="status" class="status">The Bone Court to move.</div>
+        <div id="substatus" class="substatus"></div>
+        <div id="winter-clock" class="winter-clock hidden"></div>
+      </div>
+
+      <div class="controls">
+        <button id="btn-undo" class="btn">Undo</button>
+        <button id="btn-flip" class="btn">Flip Board</button>
+        <button id="btn-parley" class="btn">Offer Parley</button>
+        <button id="btn-resign" class="btn danger">Resign</button>
+      </div>
+
+      <button id="btn-annotate" class="btn annotate-start">Annotate</button>
+
+      <div id="annotate-bar" class="annotate-bar hidden">
+        <div class="anno-row" role="group" aria-label="Annotation tools">
+          <button class="atool active" data-tool="arrow" title="Draw an arrow — drag from one square to another">Arrow</button>
+          <button class="atool" data-tool="highlight" title="Highlight a square — click it">Highlight</button>
+          <button class="atool" data-tool="text" title="Add a label — click where it should sit">Label</button>
+        </div>
+        <div class="anno-row anno-glyphs" role="group" aria-label="Move-quality marks — click a square to place">
+          <button class="atool aglyph" data-tool="glyph" data-glyph="!!" data-nag="brilliant" title="Brilliant">!!</button>
+          <button class="atool aglyph" data-tool="glyph" data-glyph="!" data-nag="good" title="Good move">!</button>
+          <button class="atool aglyph" data-tool="glyph" data-glyph="!?" data-nag="interesting" title="Interesting move">!?</button>
+          <button class="atool aglyph" data-tool="glyph" data-glyph="?!" data-nag="dubious" title="Dubious move">?!</button>
+          <button class="atool aglyph" data-tool="glyph" data-glyph="?" data-nag="mistake" title="Mistake">?</button>
+          <button class="atool aglyph" data-tool="glyph" data-glyph="??" data-nag="blunder" title="Blunder">??</button>
+        </div>
+        <div class="anno-row anno-colors" role="group" aria-label="Ink colour">
+          <button class="aswatch active" data-color="#e8c96a" title="Gold" style="--sw:#e8c96a"></button>
+          <button class="aswatch" data-color="#b8442f" title="Ember" style="--sw:#b8442f"></button>
+          <button class="aswatch" data-color="#6f9e5f" title="Green" style="--sw:#6f9e5f"></button>
+          <button class="aswatch" data-color="#5b8fc9" title="Blue" style="--sw:#5b8fc9"></button>
+        </div>
+        <div class="anno-row anno-actions">
+          <button id="btn-anno-undo" class="btn mini" title="Undo the last mark">Undo</button>
+          <button id="btn-anno-clear" class="btn mini" title="Remove every mark">Clear</button>
+          <button id="btn-anno-copy" class="btn mini primary" title="Copy an image of the board to the clipboard">Copy Image</button>
+          <button id="btn-anno-done" class="btn mini ghost" title="Leave annotation mode">Done</button>
+        </div>
+      </div>
+
+      <div id="editor-bar" class="editor-bar hidden">
+        <div class="editor-head">Puzzle Editor</div>
+        <p class="editor-hint">Pick a piece, then click a square to place it. Drag a piece to move it. Choose Erase to clear squares.</p>
+        <div class="palette" id="palette-bone" aria-label="Bone pieces"></div>
+        <div class="palette" id="palette-ash" aria-label="Ash pieces"></div>
+        <div class="anno-row">
+          <button class="atool ed-brush ed-erase" data-erase="1" title="Erase — click a square to clear it">Erase</button>
+        </div>
+        <div class="anno-row ed-inline">
+          <span class="ed-label">To move</span>
+          <div class="seg ed-seg" id="ed-turn">
+            <button data-v="bone" class="seg-btn active">Bone</button>
+            <button data-v="ash" class="seg-btn">Ash</button>
+          </div>
+        </div>
+        <div class="anno-row ed-fluchts">
+          <label class="toggle mini"><input type="checkbox" id="ed-flucht-bone" checked><span>Bone may Flucht</span></label>
+          <label class="toggle mini"><input type="checkbox" id="ed-flucht-ash" checked><span>Ash may Flucht</span></label>
+        </div>
+        <div id="ed-status" class="ed-status"></div>
+        <div class="anno-row">
+          <button id="btn-ed-start" class="btn mini" title="Load the standard opening position">Reset to Start</button>
+          <button id="btn-ed-clear" class="btn mini" title="Empty the board">Clear Board</button>
+        </div>
+        <div class="anno-row">
+          <button id="btn-ed-copy" class="btn mini" title="Copy this position as a shareable code">Copy Code</button>
+          <button id="btn-ed-save" class="btn mini" title="Save this position to your library">Save…</button>
+          <button id="btn-ed-library" class="btn mini" title="Browse your saved puzzles">Library…</button>
+        </div>
+        <div class="anno-row ed-actions">
+          <button id="btn-ed-play" class="btn mini primary" title="Start playing from this position">Play from Here</button>
+          <button id="btn-ed-done" class="btn mini ghost" title="Leave the editor">Done</button>
+        </div>
+      </div>
+
+      <div id="replay-bar" class="replay-bar hidden">
+        <div class="replay-head"><span class="editor-head">Replay</span><span id="replay-name" class="replay-name"></span></div>
+        <div class="replay-move" id="replay-move"></div>
+        <div class="replay-nav">
+          <button id="btn-rp-first" class="btn mini" title="First move" aria-label="First">⏮</button>
+          <button id="btn-rp-prev" class="btn mini" title="Previous move" aria-label="Previous">◀</button>
+          <button id="btn-rp-play" class="btn mini" title="Play / pause" aria-label="Play">▶</button>
+          <button id="btn-rp-next" class="btn mini" title="Next move" aria-label="Next">▶▶</button>
+          <button id="btn-rp-last" class="btn mini" title="Last move" aria-label="Last">⏭</button>
+        </div>
+        <div class="replay-count" id="replay-count"></div>
+        <textarea id="replay-commentary" class="replay-commentary" rows="3" placeholder="Narrate this moment — write as much as you like…"></textarea>
+        <button id="btn-rp-annotate" class="btn mini" title="Draw on this position">Annotate this Position</button>
+        <div class="replay-save">
+          <input id="replay-name-input" class="text-input" maxlength="60" placeholder="Name this game" autocomplete="off">
+          <button id="btn-rp-save" class="btn mini primary" title="Save this game — with your notes — to the Annals">Save to the Annals</button>
+        </div>
+        <div class="anno-row">
+          <button id="btn-rp-share" class="btn mini" title="Copy a shareable replay code">Share</button>
+          <button id="btn-rp-newgame" class="btn mini">New Game</button>
+          <button id="btn-rp-exit" class="btn mini ghost">Close</button>
+        </div>
+      </div>
+
+      <div id="claims" class="claims hidden">
+        <button id="btn-siege" class="btn claim hidden">Claim the Long Siege</button>
+        <button id="btn-winter" class="btn claim hidden">Claim the Long Winter</button>
+      </div>
+
+      <label class="toggle">
+        <input type="checkbox" id="chk-escapes">
+        <span>Show the Krone's escape squares</span>
+      </label>
+
+      <div class="log-card">
+        <h2 class="with-action">Chronicle <button id="btn-export" class="btn mini" title="Copy the game record as text">Copy</button></h2>
+        <ol id="movelog" class="movelog"></ol>
+      </div>
+
+      <div class="log-card chat-card hidden" id="chat-card">
+        <h2>Parlour</h2>
+        <div id="chatlog" class="chatlog"></div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" class="text-input" maxlength="300" placeholder="Speak…" autocomplete="off">
+          <button class="btn mini" type="submit">Send</button>
+        </form>
+      </div>
+    </aside>
+
+  </main>
+
+  <footer class="colophon">
+    <p>“You need not kill a king to finish him. You need only see that he has nowhere left to stand.”</p>
+    <p class="attribution">— Knight-Captain Sigismund von Höthbacher, <em>Ordo Theoderici Cohortis Niger</em></p>
+  </footer>
+</div>
+
+<!-- New game dialog -->
+<div class="overlay hidden" id="ov-new">
+  <div class="dialog">
+    <h2>A New Game</h2>
+    <div class="field">
+      <span class="field-label">Opponent</span>
+      <div class="seg" id="seg-mode">
+        <button data-v="hotseat" class="seg-btn active">Two Players</button>
+        <button data-v="ai" class="seg-btn">Against the Court</button>
+      </div>
+    </div>
+    <div class="field hotseat-only">
+      <span class="field-label">Where</span>
+      <div class="seg" id="seg-where">
+        <button data-v="local" class="seg-btn active">Local</button>
+        <button data-v="online" class="seg-btn">Online</button>
+      </div>
+    </div>
+    <div class="field ai-only">
+      <span class="field-label">You command</span>
+      <div class="seg" id="seg-side">
+        <button data-v="bone" class="seg-btn active">The Bone Court</button>
+        <button data-v="ash" class="seg-btn">The Ash Court</button>
+      </div>
+    </div>
+    <div class="field ai-only">
+      <span class="field-label">The Court plays as</span>
+      <div class="seg" id="seg-level">
+        <button data-v="novice" class="seg-btn">Novice</button>
+        <button data-v="courtier" class="seg-btn active">Courtier</button>
+        <button data-v="spymaster" class="seg-btn">Spymaster</button>
+      </div>
+    </div>
+    <div class="field online-only">
+      <span class="field-label">Your part</span>
+      <div class="seg" id="seg-net-role">
+        <button data-v="host" class="seg-btn active">Create a Table</button>
+        <button data-v="join" class="seg-btn">Join by Code</button>
+      </div>
+    </div>
+    <div class="field online-only host-only">
+      <span class="field-label">You command</span>
+      <div class="seg" id="seg-host-side">
+        <button data-v="bone" class="seg-btn active">The Bone Court</button>
+        <button data-v="ash" class="seg-btn">The Ash Court</button>
+      </div>
+    </div>
+    <div class="field online-only join-only">
+      <span class="field-label">Room code</span>
+      <input id="join-code" class="text-input" maxlength="8" placeholder="e.g. K7QF"
+             autocomplete="off" autocapitalize="characters" spellcheck="false">
+    </div>
+    <p class="dialog-note online-only">Play travels directly between your two browsers; share the code by any messenger you like.</p>
+    <div class="dialog-actions">
+      <button class="btn ghost" id="btn-primer-new">First Time? The Primer</button>
+      <button class="btn ghost" id="btn-new-cancel">Cancel</button>
+      <button class="btn primary" id="btn-new-start">Begin</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rules dialog -->
+<div class="overlay hidden" id="ov-rules">
+  <div class="dialog wide">
+    <h2>The Rules, Briefly</h2>
+    <div class="rules-body">
+      <h3>The board</h3>
+      <p>Eleven by eleven, ash-grey and bone-pale. The centre square — the <strong>Aschenstuhl</strong>, the Ash Seat — is permanently empty. No piece may ever occupy it, sliding pieces cannot see past it, and a Gesandter may leap over it but never land on it. For the Krone it behaves exactly as the edge of the board: a square he cannot step onto, but never an enemy hand at his throat. A Bürger whose file runs into the throne — standing at f5 or f7 — may step diagonally around it onto e6 or g6, capture or no capture: the game's one non-capturing diagonal step.</p>
+
+      <h3>The pieces</h3>
+      <ul>
+        <li><strong><span class="rule-ico" data-piece="1"></span> Krone</strong> — one square in any direction, onto open ground only. Never captured, and never captures; see Isolation.</li>
+        <li><strong><span class="rule-ico" data-piece="2"></span> Kanzler</strong> (×2) — any distance in any direction. Each side has two, flanking the Krone from the first move.</li>
+        <li><strong><span class="rule-ico" data-piece="3"></span> Marschall</strong> — any distance orthogonally.</li>
+        <li><strong><span class="rule-ico" data-piece="4"></span> Prälat</strong> — any distance diagonally.</li>
+        <li><strong><span class="rule-ico" data-piece="5"></span> Gesandter</strong> — the broken L-step; leaps over anything in its path.</li>
+        <li><strong><span class="rule-ico" data-piece="6"></span> Bürger</strong> — one square forward; on its first move only, it may instead advance one, two, or three squares in a straight line. Captures one square diagonally forward, at any time. A Bürger reaching the far rank promotes — <em>only ever</em> to a Gesandter. There is no en passant.</li>
+      </ul>
+
+      <h3>Die Flucht</h3>
+      <p>An unmoved Krone may, once per game, leap up to three squares in a straight orthogonal line — provided every square he passes through and lands on is empty and unthreatened. Any ordinary Krone move forfeits the option forever.</p>
+
+      <h3>Isolation — the only way to win</h3>
+      <p>There is no check, no checkmate, and no stalemate-as-draw. At the start of every turn, before any piece moves, the Krone of the player to move is examined. He is <strong>Isolated</strong> — and the game instantly lost — when both of the following hold:</p>
+      <ol>
+        <li>Every square adjacent to him (including any square still reachable by Die Flucht) is occupied by a piece of <em>either</em> colour, threatened by an enemy piece, or off the board.</li>
+        <li>Either the Krone's own square is directly threatened by an enemy piece, or at least one adjacent square that is <em>genuinely empty</em> — held by no piece of either colour — is threatened by an enemy piece.</li>
+      </ol>
+      <p>An enemy threat against a square already filled by the Krone's own court counts for nothing — that door was never going to open for him regardless. Only two things end a Krone's reign: a blade genuinely at his own throat, or a genuinely empty door that the enemy, and the enemy alone, has nailed shut. A Krone is never undone by his own house alone — he is undone by his own house under siege, and it makes no difference that his own men built most of the wall.</p>
+      <p><strong>The Krone is judged as if already lifted from his square.</strong> Every threat that concerns his movement or survival is tested as though he were not standing where he stands: a Kanzler bearing directly upon him threatens the ground behind him just as surely as the ground before him. A king does not shelter a doorway with his own body.</p>
+      <p><strong>The Krone cannot be taken.</strong> No move may capture a Krone — it is simply not a legal move, exactly as landing on the Aschenstuhl is not. A Krone may stand indefinitely on a threatened square; only Isolation ends his part in the game.</p>
+      <p><strong>The Krone takes no one.</strong> The courtesy is returned: the Krone may never capture, and moves only onto open ground. Kronspiel permits no reaction — a Krone does not answer a wall by tearing a brick from it, and an enemy piece at his elbow is simply part of the wall.</p>
+      <p><strong>There is no rescue.</strong> Isolation is judged before the court is given leave to act. A piece that could have captured the offending enemy, or blocked its line, does not save him — the move that would have done it always comes one turn too late. The one safeguard the rules provide: you may never voluntarily make a move that isolates your own Krone, just as the Krone may never step into an enemy's line.</p>
+      <p><strong>The Palsied Court.</strong> A player with no legal move at all — Krone included — loses at once, provided the enemy has a hand in it by the test above: a blade at the Krone's throat, or a threat against a genuinely empty square beside him. Paralysed under siege is fallen. Without any enemy touch, it is instead the Frozen Court, and drawn.</p>
+
+      <h3>Draws</h3>
+      <ul>
+        <li><strong>The Long Siege</strong> — the same position, same player to move, a third time; either player may claim.</li>
+        <li><strong>The Long Winter</strong> — fifty moves by each side with no Bürger moved and no capture; either player may claim.</li>
+        <li><strong>The Empty Court</strong> — lone Krone against lone Krone; drawn automatically.</li>
+        <li><strong>Mutual Ruin</strong> — both Krone isolated at the start of the same round; drawn, and considered the most honest outcome the board can produce.</li>
+        <li><strong>The Frozen Court</strong> — no legal move remains, yet no enemy hand touches the wall: the court has choked itself still, alone. Drawn automatically.</li>
+        <li><strong>Parley</strong> — a draw agreed between the players at any point.</li>
+      </ul>
+
+      <h3>Conventions of this table</h3>
+      <p>The Bone Court moves first. Ranks run 1–11 from the Bone home rank; files run a–k from the left of the Bone player.</p>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn ghost" id="btn-primer-rules">Learn by Doing — the Primer</button>
+      <button class="btn primary" id="btn-rules-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Options dialog -->
+<div class="overlay hidden" id="ov-options">
+  <div class="dialog">
+    <h2>Options</h2>
+    <div class="field">
+      <span class="field-label">Piece style</span>
+      <div class="seg" id="seg-pieces">
+        <button data-v="sigils" class="seg-btn active">Court Sigils</button>
+        <button data-v="classic" class="seg-btn">Classic Glyphs</button>
+      </div>
+    </div>
+    <div class="pieceset-preview" id="pieceset-preview"></div>
+    <div class="dialog-actions">
+      <button class="btn primary" id="btn-options-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm dialog (parley / resign / new-game-in-progress) -->
+<div class="overlay hidden" id="ov-confirm">
+  <div class="dialog">
+    <h2 id="confirm-title">Are you certain?</h2>
+    <p id="confirm-text"></p>
+    <div class="dialog-actions">
+      <button class="btn ghost" id="btn-confirm-no">No</button>
+      <button class="btn primary" id="btn-confirm-yes">Yes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Text-entry dialog (puzzle names, position codes) -->
+<div class="overlay hidden" id="ov-prompt">
+  <div class="dialog">
+    <h2 id="prompt-title"></h2>
+    <p id="prompt-note" class="dialog-note"></p>
+    <form id="prompt-form" class="prompt-form">
+      <input id="prompt-input" class="text-input" autocomplete="off" spellcheck="false">
+      <div class="dialog-actions">
+        <button type="button" class="btn ghost" id="btn-prompt-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="btn-prompt-ok">Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Game over -->
+<div class="overlay hidden" id="ov-over">
+  <div class="dialog gameover">
+    <div class="gameover-rule"></div>
+    <h2 id="over-title"></h2>
+    <p id="over-text"></p>
+    <div class="dialog-actions">
+      <button class="btn ghost" id="btn-over-review">Review &amp; Annotate</button>
+      <button class="btn hidden" id="btn-over-rematch">Offer Rematch</button>
+      <button class="btn primary" id="btn-over-new">New Game</button>
+    </div>
+  </div>
+</div>
+
+<!-- The Annals — saved games -->
+<div class="overlay hidden" id="ov-annals">
+  <div class="dialog wide">
+    <h2>The Annals</h2>
+    <p class="dialog-note">Games you have set down. Open one to walk through it move by move — and annotate as you go.</p>
+    <div id="annals-list" class="annals-list"></div>
+    <div class="dialog-actions">
+      <button class="btn ghost" id="btn-annals-load">Load a Shared Replay</button>
+      <button class="btn primary" id="btn-annals-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- The Puzzle Library — saved positions -->
+<div class="overlay hidden" id="ov-puzzles">
+  <div class="dialog wide">
+    <h2>Puzzle Library</h2>
+    <p class="dialog-note">Saved positions. Open one in the editor, copy its code to share, or remove it.</p>
+    <div id="puzzles-list" class="annals-list"></div>
+    <div class="dialog-actions">
+      <button class="btn ghost" id="btn-puzzles-load">Load a Shared Puzzle</button>
+      <button class="btn primary" id="btn-puzzles-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Online: awaiting connection -->
+<div class="overlay hidden" id="ov-wait">
+  <div class="dialog netwait">
+    <h2 id="wait-title">The Table Is Set</h2>
+    <p id="wait-text">Share this code with the other court:</p>
+    <div class="room-code" id="wait-code"></div>
+    <div id="wait-status"></div>
+    <div class="dialog-actions">
+      <button class="btn" id="btn-copy-invite">Copy Invitation</button>
+      <button class="btn ghost" id="btn-wait-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+<button class="btn result-chip hidden" id="btn-show-result">Show Result</button>
+<button class="focus-btn" id="btn-focus" title="Full-screen view" aria-label="Toggle full-screen view">⛶</button>
+<button class="focus-btn unavailable" id="btn-focus-chat" title="The Parlour" aria-label="Toggle chat">✉<span id="chat-unread" class="chat-unread hidden"></span></button>
+
+<script src="js/vendor/peerjs.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

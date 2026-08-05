@@ -66,3 +66,9 @@ export function pieceHTML(setId, type) {
   }
   return GLYPHS[type];
 }
+
+// Raw sigil markup (paths on a 100×100 viewBox), for redrawing pieces into an
+// exported board image. Colour is applied by the caller.
+export function sigilInner(type) {
+  return SIGILS[type];
+}

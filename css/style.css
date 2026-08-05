@@ -148,6 +148,9 @@ body::after {
   box-shadow: 0 0 8px rgba(200, 162, 74, 0.5);
 }
 
+.home-link { display: contents; }
+h1:has(.home-link) { cursor: pointer; }
+
 h1 {
   font-family: "Cinzel Decorative", "Cinzel", serif;
   font-weight: 700;
@@ -569,6 +572,320 @@ svg.tut-arrows line { stroke: rgba(232, 201, 106, 0.85); stroke-width: 1.1; }
 svg.tut-arrows .halo line { stroke: rgba(200, 162, 74, 0.3); stroke-width: 2.6; }
 svg.tut-arrows polygon { fill: rgba(232, 201, 106, 0.85); }
 
+/* ---------- annotation overlay ---------- */
+
+/* Two drawing surfaces. Arrows + highlights go UNDER the pieces so a piece is
+   never obscured by an arrow's tail; glyphs + labels go OVER, and carry the
+   pointer interaction. Both only swallow events while annotation is live —
+   otherwise the marks linger, visible, and clicks fall through to the board. */
+.anno-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.anno-under { z-index: 1; }  /* below .pieces-layer (z-index 2) */
+.anno-over { z-index: 5; }
+.anno-over.active { cursor: crosshair; }
+.anno-over.active .anno-catch { pointer-events: all; }
+.anno-over.active text[data-label-i] { pointer-events: auto; cursor: move; }
+.board.annotating .sq { cursor: crosshair; }
+
+/* Inline label entry — themed, not a system prompt */
+.anno-input {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 6;
+  min-width: 72px;
+  max-width: 62%;
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 15px;
+  text-align: center;
+  color: var(--ink, #fff);
+  background: rgba(16, 13, 10, 0.92);
+  border: 1px solid var(--gold);
+  border-radius: 3px;
+  padding: 3px 7px;
+  outline: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+}
+
+.anno-layer .halo { stroke: rgba(0, 0, 0, 0.45); }
+.anno-layer text { font-family: Georgia, serif; }
+.anno-layer .anno-label {
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.65);
+  stroke-width: 0.7;
+  stroke-linejoin: round;
+}
+.anno-layer .anno-nag-text {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-weight: 800;
+  fill: #fff;
+}
+
+/* Annotation toolbar in the sidebar */
+.annotate-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: linear-gradient(180deg, #1c1813 0%, #16130f 100%);
+  border: 1px solid var(--panel-edge);
+  border-top: 2px solid var(--gold-deep);
+}
+.anno-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.anno-glyphs { justify-content: space-between; }
+
+.atool {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: "Cinzel", serif;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  background: linear-gradient(180deg, #2a231a 0%, #1b1712 100%);
+  border: 1px solid #3a3226;
+  padding: 7px 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.atool:hover { border-color: var(--gold); color: var(--gold-bright); }
+.atool.active {
+  color: #171208;
+  background: linear-gradient(180deg, var(--gold-pale) 0%, var(--gold) 60%, #a8853a 100%);
+  border-color: #8a6d2e;
+}
+.aglyph {
+  flex: 0 0 auto;
+  width: calc((100% - 30px) / 6);
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-weight: 800;
+  font-size: 13px;
+  padding: 7px 0;
+}
+
+.anno-colors { gap: 8px; }
+.aswatch {
+  flex: 1 1 0;
+  height: 22px;
+  border: 2px solid #3a3226;
+  background: var(--sw);
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.aswatch:hover { transform: translateY(-1px); }
+.aswatch.active { border-color: var(--ink); box-shadow: 0 0 0 1px var(--sw); }
+
+.anno-actions { gap: 6px; }
+.anno-actions .btn { flex: 1 1 auto; }
+
+/* ---------- puzzle editor ---------- */
+
+.editor-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  background: linear-gradient(180deg, #1c1813 0%, #16130f 100%);
+  border: 1px solid var(--panel-edge);
+  border-top: 2px solid var(--gold-deep);
+}
+.editor-head {
+  font-family: "Cinzel", serif;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold-bright);
+}
+.editor-hint { margin: 0; font-size: 13px; color: var(--ink-dim); line-height: 1.35; }
+
+.palette { display: flex; gap: 4px; }
+.ed-pc-btn {
+  flex: 1 1 0;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: linear-gradient(180deg, #241d15 0%, #191410 100%);
+  border: 1px solid #3a3226;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.ed-pc-btn:hover { border-color: var(--gold); }
+.ed-pc-btn.active { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright), 0 0 8px rgba(200, 162, 74, 0.4); }
+.ed-pc-btn svg.sigil { width: 86%; height: 86%; }
+.ed-pc-btn.bone-piece { color: var(--piece-bone); }
+.ed-pc-btn.ash-piece { color: var(--piece-ash); text-shadow: 0 0 1px rgba(243, 236, 220, 0.9), 0 0 3px rgba(243, 236, 220, 0.5); }
+
+.ed-erase { flex: 1 1 auto; }
+.ed-inline { align-items: center; gap: 10px; }
+.ed-label { font-size: 13px; color: var(--ink-dim); }
+.ed-seg { flex: 1 1 auto; }
+.ed-fluchts { gap: 14px; }
+.toggle.mini { font-size: 12px; }
+.toggle.mini span { color: var(--ink-dim); }
+
+.ed-status {
+  font-size: 12.5px;
+  min-height: 1.2em;
+  padding: 4px 0;
+  border-top: 1px solid var(--panel-edge);
+  border-bottom: 1px solid var(--panel-edge);
+}
+.ed-status.ok { color: var(--open-green); }
+.ed-status.warn { color: var(--ember-soft); }
+
+.ed-library { display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; }
+.ed-lib-empty { font-size: 12px; color: var(--ink-dim); font-style: italic; }
+.ed-lib-row { display: flex; gap: 4px; }
+.ed-lib-load {
+  flex: 1 1 auto;
+  text-align: left;
+  font-family: "EB Garamond", serif;
+  font-size: 13px;
+  color: var(--ink);
+  background: #221c15;
+  border: 1px solid #3a3226;
+  padding: 5px 8px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ed-lib-load:hover { border-color: var(--gold); color: var(--gold-bright); }
+.ed-lib-del {
+  flex: 0 0 auto;
+  width: 28px;
+  color: var(--ink-dim);
+  background: #221c15;
+  border: 1px solid #3a3226;
+  cursor: pointer;
+}
+.ed-lib-del:hover { border-color: var(--ember-soft); color: var(--ember-soft); }
+
+.ed-actions { gap: 6px; }
+.ed-actions .btn { flex: 1 1 auto; }
+
+.prompt-form { display: flex; flex-direction: column; gap: 16px; margin-top: 4px; }
+.prompt-form .text-input { width: 100%; }
+
+/* While editing: the board is a workbench, so hide the live-game controls. */
+body.editing .controls,
+body.editing #btn-annotate,
+body.editing #annotate-bar,
+body.editing #claims,
+body.editing .sidebar > .toggle,
+body.editing .sidebar > .log-card:not(.tutor-card) { display: none; }
+body.editing .piece { animation: none; transition: none; }
+body.editing .board .sq { cursor: grab; }
+body.editing .board:active .sq { cursor: grabbing; }
+
+/* The piece dragged under the cursor in the editor */
+.ed-ghost {
+  position: fixed !important;
+  transform: translate(-50%, -50%) !important;
+  transition: none !important;
+  animation: none !important;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0.95;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.6));
+}
+
+/* ---------- the Annals & replay ---------- */
+
+.annals-list { display: flex; flex-direction: column; gap: 6px; max-height: 52vh; overflow-y: auto; margin: 4px 0 6px; }
+.annals-empty { font-style: italic; color: var(--ink-dim); padding: 8px 0; }
+.annals-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #1a1510;
+  border: 1px solid var(--panel-edge);
+}
+.annals-row:hover { border-color: var(--gold-deep); }
+.annals-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink);
+  font-family: "EB Garamond", serif;
+}
+.annals-open .an-name { display: block; font-size: 15px; color: var(--gold-bright); }
+.annals-open .an-sub { display: block; font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
+.annals-copy, .annals-del {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  color: var(--ink-dim);
+  background: #221c15;
+  border: 1px solid #3a3226;
+  cursor: pointer;
+}
+.annals-copy:hover { border-color: var(--gold); color: var(--gold-bright); }
+.annals-del:hover { border-color: var(--ember-soft); color: var(--ember-soft); }
+
+body.viewing .controls,
+body.viewing #btn-annotate,
+body.viewing #claims,
+body.viewing .sidebar > .toggle,
+body.viewing .sidebar > .log-card:not(.tutor-card) { display: none; }
+body.viewing .piece { animation: none; }
+
+.replay-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: linear-gradient(180deg, #1c1813 0%, #16130f 100%);
+  border: 1px solid var(--panel-edge);
+  border-top: 2px solid var(--gold-deep);
+}
+.replay-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.replay-name { font-size: 13px; color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.replay-move {
+  min-height: 1.5em;
+  font-size: 16px;
+  color: var(--ink);
+  text-align: center;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--panel-edge);
+}
+.replay-move .dim { color: var(--ink-dim); font-style: italic; }
+.replay-move svg.sigil { width: 18px; height: 18px; vertical-align: -3px; }
+.replay-nav { display: flex; gap: 4px; }
+.replay-nav .btn { flex: 1 1 0; padding: 8px 0; }
+.replay-nav .btn.playing { color: var(--gold-bright); border-color: var(--gold); }
+.replay-count { text-align: center; font-size: 13px; letter-spacing: 0.08em; color: var(--ink-dim); }
+.replay-bar .anno-row { gap: 6px; }
+.replay-bar .anno-row .btn { flex: 1 1 auto; }
+.replay-save { display: flex; flex-direction: column; gap: 6px; }
+.replay-save .text-input { width: 100%; }
+.replay-commentary {
+  width: 100%;
+  resize: vertical;
+  min-height: 3.4em;
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--panel-edge);
+  padding: 7px 9px;
+  outline: none;
+}
+.replay-commentary:focus { border-color: var(--gold-deep); }
+
 .piece {
   position: absolute;
   width: calc(100% / 11);
@@ -849,8 +1166,8 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 
 .overlay.hidden, .hidden { display: none !important; }
 
-/* questions outrank announcements: a confirm may arrive over the game-over dialog */
-#ov-confirm { z-index: 55; }
+/* questions outrank announcements: a confirm or text prompt may arrive over another dialog */
+#ov-confirm, #ov-prompt { z-index: 55; }
 
 .dialog {
   background: linear-gradient(180deg, #221b13 0%, #171310 100%);
@@ -929,6 +1246,7 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 }
 
 .hide-ai .ai-only { display: none; }
+.dialog:not(.mode-hotseat) .hotseat-only { display: none; }
 
 /* rules body */
 .rules-body { font-size: 16px; line-height: 1.55; }

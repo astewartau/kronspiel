@@ -2,14 +2,229 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script>
+  // An invitation link (?join=CODE) belongs to the game, not the homepage.
+  if (/[?&]join=/.test(location.search)) location.replace('play.html' + location.search);
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Kronspiel — Crown-play</title>
-<meta name="description" content="Kronspiel: an 11×11 court-game of Isolation. A Krone is never captured — he is only isolated.">
+<title>Kronspiel — a court-game of Isolation</title>
+<meta name="description" content="Kronspiel: an 11×11 court-game of Isolation. A Krone is never captured — he is only isolated. Play the Court, a friend, or the world; compose puzzles; keep the Annals.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>♚</text></svg>">
+<style>
+  .home {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 22px 60px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ---------- hero ---------- */
+  .hero {
+    text-align: center;
+    padding: clamp(48px, 12vh, 130px) 0 54px;
+    position: relative;
+  }
+  .hero-emblem {
+    width: clamp(88px, 16vw, 140px);
+    height: clamp(88px, 16vw, 140px);
+    margin: 0 auto 22px;
+    display: block;
+    fill: var(--gold);
+    stroke: #6b531f;
+    stroke-width: 2.5;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 22px rgba(200, 162, 74, 0.4));
+    animation: emblem-glow 6s ease-in-out infinite;
+  }
+  @keyframes emblem-glow {
+    0%, 100% { filter: drop-shadow(0 0 14px rgba(200, 162, 74, 0.28)); }
+    50%      { filter: drop-shadow(0 0 30px rgba(232, 201, 106, 0.55)); }
+  }
+  .hero h1 {
+    font-family: "Cinzel Decorative", "Cinzel", serif;
+    font-weight: 900;
+    font-size: clamp(46px, 10vw, 104px);
+    letter-spacing: 0.06em;
+    margin: 0;
+    line-height: 1;
+    background: linear-gradient(180deg, var(--gold-pale) 0%, var(--gold) 48%, #8a6a2c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 2px 30px rgba(200, 162, 74, 0.15);
+  }
+  .hero .sub {
+    font-family: "Cinzel", serif;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    font-size: clamp(11px, 2.4vw, 15px);
+    color: var(--ink-dim);
+    margin: 18px 0 0;
+  }
+  .hero .quote {
+    max-width: 620px;
+    margin: 30px auto 0;
+    font-size: clamp(17px, 2.6vw, 21px);
+    font-style: italic;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  .hero .quote cite { display: block; margin-top: 10px; font-size: 14px; font-style: normal; color: var(--ink-dim); }
+
+  .rule-divider {
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+    margin: 40px auto 0; max-width: 420px; color: var(--gold-deep);
+  }
+  .rule-divider::before, .rule-divider::after {
+    content: ""; height: 1px; flex: 1;
+    background: linear-gradient(90deg, transparent, var(--gold-deep), transparent);
+  }
+  .rule-divider span { font-size: 18px; color: var(--gold); }
+
+  .cta-row { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 40px; }
+  .btn.xl { font-size: 15px; padding: 15px 34px; }
+
+  /* ---------- feature cards ---------- */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin-top: 76px;
+  }
+  .feature {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--panel-edge);
+    border-top: 2px solid var(--gold-deep);
+    padding: 22px 22px 24px;
+    position: relative;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .feature:hover { border-top-color: var(--gold); transform: translateY(-3px); }
+  .feature .ico { font-size: 26px; color: var(--gold); line-height: 1; }
+  .feature h3 {
+    font-family: "Cinzel", serif; font-size: 17px; letter-spacing: 0.04em;
+    margin: 12px 0 8px; color: var(--gold-bright);
+  }
+  .feature p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink-dim); }
+
+  /* ---------- rules summary ---------- */
+  .section-head {
+    text-align: center; margin: 84px 0 28px;
+    font-family: "Cinzel", serif; letter-spacing: 0.16em; text-transform: uppercase;
+    font-size: 15px; color: var(--gold);
+  }
+  .rules-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px 30px;
+    background: linear-gradient(180deg, rgba(28,24,19,0.6), rgba(18,15,11,0.6));
+    border: 1px solid var(--panel-edge); padding: 30px 32px;
+  }
+  .rules-grid h4 {
+    font-family: "Cinzel", serif; color: var(--gold-bright); font-size: 15px;
+    letter-spacing: 0.05em; margin: 0 0 6px;
+  }
+  .rules-grid p { margin: 0; font-size: 15.5px; line-height: 1.55; color: var(--ink); }
+  .rules-grid .piece-line { color: var(--ink); }
+  .rules-grid .piece-line b { color: var(--gold-bright); font-weight: 600; }
+
+  /* ---------- isolation diagram ---------- */
+  .iso-figures {
+    display: flex; flex-wrap: wrap; gap: 34px; justify-content: center;
+    margin-top: 30px;
+  }
+  .iso { margin: 0; max-width: 300px; text-align: center; }
+  .iso-board {
+    width: 192px; height: 192px; margin: 0 auto 14px;
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    border: 1px solid #0d0a07; box-shadow: 0 6px 22px rgba(0,0,0,0.5), inset 0 0 30px rgba(0,0,0,0.4);
+  }
+  .iso-board .c {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    font-size: 30px; line-height: 1;
+  }
+  .iso-board .c.bone { background: linear-gradient(145deg, #c7b89d, #baab8e); }
+  .iso-board .c.ash  { background: linear-gradient(145deg, #554d43, #4a4239); }
+  /* Krone is a Bone (white) piece — the defender — marked as king by a gold ring, not a gold fill. */
+  .iso-board .krone { color: #f6efdf; font-size: 34px; text-shadow: 0 0 3px #000, 0 0 9px rgba(232,201,106,0.85), 0 1px 2px #000; }
+  .iso-board .own   { color: #f6efdf; text-shadow: 0 1px 2px #000, 0 0 3px rgba(0,0,0,0.7); }
+  .iso-board .enemy { color: #1b1610; text-shadow: 0 1px 1px rgba(243,236,220,0.45); }
+  .iso-board .threat { box-shadow: inset 0 0 0 3px rgba(184,68,47,0.7); }
+  .iso-board .threat::after { content: "✕"; color: #e0654a; font-size: 22px; text-shadow: 0 0 7px rgba(184,68,47,0.7); }
+  .iso-board .open { box-shadow: inset 0 0 0 3px rgba(111,158,95,0.9); }
+  .iso-board .open::after { content: "✓"; color: #8fbf77; font-size: 22px; }
+  .iso figcaption { font-size: 15px; line-height: 1.5; color: var(--ink-dim); }
+  .iso figcaption b { color: var(--gold-bright); font-weight: 600; }
+  .iso.doomed figcaption b { color: var(--ember-soft); }
+  .iso-legend {
+    display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: center;
+    margin: 20px auto 0; max-width: 660px; font-size: 14px; color: var(--ink-dim);
+  }
+  .iso-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .iso-legend b { font-style: normal; font-size: 17px; }
+  .lg-own { color: #f6efdf; text-shadow: 0 1px 2px #000, 0 0 6px rgba(232,201,106,0.5); }
+  .lg-enemy { color: #1b1610; text-shadow: 0 0 2px rgba(243,236,220,0.8); }
+  .lg-x { color: #e0654a; } .lg-open { color: #8fbf77; }
+
+  /* ---------- full rules ---------- */
+  .full-rules {
+    margin: 30px auto 0; max-width: 780px;
+    border: 1px solid var(--panel-edge);
+    background: linear-gradient(180deg, rgba(28,24,19,0.5), rgba(18,15,11,0.5));
+  }
+  .full-rules > summary {
+    cursor: pointer; list-style: none; padding: 16px 22px;
+    font-family: "Cinzel", serif; letter-spacing: 0.08em; text-transform: uppercase;
+    font-size: 14px; color: var(--gold-bright); user-select: none;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .full-rules > summary::-webkit-details-marker { display: none; }
+  .full-rules > summary::after { content: "＋"; color: var(--gold); font-size: 18px; }
+  .full-rules[open] > summary::after { content: "－"; }
+  .full-rules > summary:hover { color: var(--gold-pale); }
+  .full-rules .rules-body { padding: 4px 26px 24px; }
+  .full-rules .rules-body h3 {
+    font-family: "Cinzel", serif; color: var(--gold); font-size: 15px;
+    letter-spacing: 0.06em; margin: 22px 0 6px;
+  }
+  .full-rules .rules-body p, .full-rules .rules-body li { font-size: 15.5px; line-height: 1.6; color: var(--ink); }
+  .full-rules .rules-body .g { color: var(--gold-bright); font-weight: 600; }
+
+  .home-foot { text-align: center; margin-top: 70px; }
+  .home-foot .btn { margin: 0 6px; }
+
+  /* ---------- workshop / simulations ---------- */
+  .workshop {
+    margin-top: 72px;
+    border-top: 1px solid var(--panel-edge);
+    padding-top: 30px;
+  }
+  .workshop .section-head { margin-top: 0; }
+  .workshop-lead {
+    text-align: center; max-width: 640px; margin: 0 auto 24px;
+    font-size: 15px; line-height: 1.55; color: var(--ink-dim);
+  }
+  .workshop-links {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px; max-width: 820px; margin: 0 auto;
+  }
+  .workshop-links a {
+    display: block; text-decoration: none;
+    background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border: 1px solid var(--panel-edge); border-left: 2px solid var(--gold-deep);
+    padding: 16px 18px; transition: border-color 0.2s, transform 0.2s;
+  }
+  .workshop-links a:hover { border-left-color: var(--gold); transform: translateY(-2px); }
+  .workshop-links .wl-title { font-family: "Cinzel", serif; font-size: 15px; color: var(--gold-bright); letter-spacing: 0.03em; }
+  .workshop-links .wl-desc { font-size: 13.5px; color: var(--ink-dim); margin-top: 5px; line-height: 1.45; }
+
+  @media (max-width: 560px) {
+    .cta-row .btn { flex: 1 1 100%; }
+  }
+</style>
 </head>
 <body>
 <div class="embers" aria-hidden="true">
@@ -23,291 +238,192 @@
   <span style="--x:88%; --d:25s; --dl:-2s;  --s:3px; --drift:-26px"></span>
   <span style="--x:95%; --d:20s; --dl:-11s; --s:2px; --drift:14px"></span>
 </div>
-<div class="app">
 
-  <header class="masthead">
-    <div class="masthead-inner">
-      <div class="title-block">
-        <h1>Kronspiel</h1>
-        <p class="tagline">A Krone is never captured. He is only isolated.</p>
-      </div>
-      <nav class="top-actions">
-        <button id="btn-rules" class="btn ghost">Rules</button>
-        <button id="btn-options" class="btn ghost">Options</button>
-        <button id="btn-new" class="btn primary">New Game</button>
-      </nav>
+<main class="home">
+  <section class="hero">
+    <svg class="hero-emblem" viewBox="0 0 100 100" aria-hidden="true">
+      <path d="M47.7 2 h4.6 v5.4 h5.4 v4.6 h-5.4 v5.4 h-4.6 v-5.4 h-5.4 v-4.6 h5.4 Z"/>
+      <path d="M20 76 L17 46 C24 52 32 55 38 54 C43 53 47 46 50 36 C53 46 57 53 62 54 C68 55 76 52 83 46 L80 76 Z"/>
+      <circle cx="17" cy="40" r="5"/>
+      <circle cx="83" cy="40" r="5"/>
+      <circle cx="50" cy="27" r="5"/>
+      <rect x="18" y="76" width="64" height="14" rx="4"/>
+    </svg>
+    <h1>Kronspiel</h1>
+    <p class="sub">Ash and Bone · Candlelight and Gold</p>
+    <p class="quote">
+      “A Krone is never captured. He is only isolated.”
+      <cite>— the first and last rule of the court</cite>
+    </p>
+    <div class="rule-divider"><span>❦</span></div>
+    <div class="cta-row">
+      <a class="btn primary xl" href="play.html">Enter the Court</a>
+      <a class="btn ghost xl" href="play.html">First time? The Primer</a>
+      <a class="btn ghost xl" href="#rules">Read the Rules</a>
     </div>
-  </header>
+  </section>
 
-  <main class="table">
-
-    <section class="board-column">
-      <div class="focus-hud">
-        <button id="btn-focus-undo" class="btn mini">Undo</button>
-        <span id="focus-status"></span>
-        <button id="btn-focus-exit" class="btn mini">Exit</button>
-      </div>
-      <div class="player-bar" id="bar-top">
-        <span class="court-sigil ash">♛</span>
-        <span class="court-name" id="name-top">The Ash Court</span>
-        <span class="escape-badge" id="esc-top" title="Open escape squares around this Krone"></span>
-        <span class="captured" id="cap-top"></span>
-      </div>
-
-      <div class="board-frame">
-        <i class="bf-corner tl" aria-hidden="true"></i>
-        <i class="bf-corner tr" aria-hidden="true"></i>
-        <i class="bf-corner bl" aria-hidden="true"></i>
-        <i class="bf-corner br" aria-hidden="true"></i>
-        <div class="board-inner">
-          <div id="ranks" class="ranks"></div>
-          <div class="board-and-files">
-            <div id="board" class="board" aria-label="Kronspiel board">
-              <div id="pieces" class="pieces-layer"></div>
-              <div id="marks" class="marks-layer"></div>
-            </div>
-            <div id="files" class="files"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="player-bar" id="bar-bottom">
-        <span class="court-sigil bone">♛</span>
-        <span class="court-name" id="name-bottom">The Bone Court</span>
-        <span class="escape-badge" id="esc-bottom" title="Open escape squares around this Krone"></span>
-        <span class="captured" id="cap-bottom"></span>
-      </div>
-    </section>
-
-    <aside class="sidebar">
-      <div class="log-card tutor-card hidden" id="tutor-card">
-        <h2>The Primer <span id="tutor-step" class="tutor-step"></span></h2>
-        <h3 id="tutor-title" class="tutor-title"></h3>
-        <p id="tutor-text" class="tutor-text"></p>
-        <div class="tutor-actions">
-          <button id="btn-tutor-exit" class="btn mini ghost">Leave the Primer</button>
-          <button id="btn-tutor-back" class="btn mini ghost hidden">Back</button>
-          <button id="btn-tutor-next" class="btn mini primary">Continue</button>
-        </div>
-      </div>
-
-      <div class="status-card">
-        <div id="status" class="status">The Bone Court to move.</div>
-        <div id="substatus" class="substatus"></div>
-        <div id="winter-clock" class="winter-clock hidden"></div>
-      </div>
-
-      <div class="controls">
-        <button id="btn-undo" class="btn">Undo</button>
-        <button id="btn-flip" class="btn">Flip Board</button>
-        <button id="btn-parley" class="btn">Offer Parley</button>
-        <button id="btn-resign" class="btn danger">Resign</button>
-      </div>
-
-      <div id="claims" class="claims hidden">
-        <button id="btn-siege" class="btn claim hidden">Claim the Long Siege</button>
-        <button id="btn-winter" class="btn claim hidden">Claim the Long Winter</button>
-      </div>
-
-      <label class="toggle">
-        <input type="checkbox" id="chk-escapes">
-        <span>Show the Krone's escape squares</span>
-      </label>
-
-      <div class="log-card">
-        <h2 class="with-action">Chronicle <button id="btn-export" class="btn mini" title="Copy the game record as text">Copy</button></h2>
-        <ol id="movelog" class="movelog"></ol>
-      </div>
-
-      <div class="log-card chat-card hidden" id="chat-card">
-        <h2>Parlour</h2>
-        <div id="chatlog" class="chatlog"></div>
-        <form id="chat-form" class="chat-form">
-          <input id="chat-input" class="text-input" maxlength="300" placeholder="Speak…" autocomplete="off">
-          <button class="btn mini" type="submit">Send</button>
-        </form>
-      </div>
-    </aside>
-
-  </main>
-
-  <footer class="colophon">
-    <p>“You need not kill a king to finish him. You need only see that he has nowhere left to stand.”</p>
-    <p class="attribution">— Knight-Captain Sigismund von Höthbacher, <em>Ordo Theoderici Cohortis Niger</em></p>
-  </footer>
-</div>
-
-<!-- New game dialog -->
-<div class="overlay hidden" id="ov-new">
-  <div class="dialog">
-    <h2>A New Game</h2>
-    <div class="field">
-      <span class="field-label">Opponent</span>
-      <div class="seg" id="seg-mode">
-        <button data-v="hotseat" class="seg-btn active">Two Players</button>
-        <button data-v="ai" class="seg-btn">Against the Court</button>
-        <button data-v="online" class="seg-btn">Online</button>
-      </div>
+  <section class="features">
+    <div class="feature">
+      <div class="ico">♚</div>
+      <h3>Isolation, not mate</h3>
+      <p>No check, no checkmate, no stalemate. A reign ends only when the Krone has nowhere left to stand and an enemy hand is at the door.</p>
     </div>
-    <div class="field ai-only">
-      <span class="field-label">You command</span>
-      <div class="seg" id="seg-side">
-        <button data-v="bone" class="seg-btn active">The Bone Court</button>
-        <button data-v="ash" class="seg-btn">The Ash Court</button>
-      </div>
+    <div class="feature">
+      <div class="ico">♟</div>
+      <h3>Play the Court</h3>
+      <p>Face an AI opponent at three strengths — Novice, Courtier, Spymaster — each with its own scripted openings and nerve.</p>
     </div>
-    <div class="field ai-only">
-      <span class="field-label">The Court plays as</span>
-      <div class="seg" id="seg-level">
-        <button data-v="novice" class="seg-btn">Novice</button>
-        <button data-v="courtier" class="seg-btn active">Courtier</button>
-        <button data-v="spymaster" class="seg-btn">Spymaster</button>
-      </div>
+    <div class="feature">
+      <div class="ico">⚔</div>
+      <h3>At the board or afar</h3>
+      <p>Two players at one screen, or across the world: play travels directly between two browsers over a code you share.</p>
     </div>
-    <div class="field online-only">
-      <span class="field-label">Your part</span>
-      <div class="seg" id="seg-net-role">
-        <button data-v="host" class="seg-btn active">Create a Table</button>
-        <button data-v="join" class="seg-btn">Join by Code</button>
-      </div>
+    <div class="feature">
+      <div class="ico">✎</div>
+      <h3>Compose puzzles</h3>
+      <p>Set any position with the editor — place and drag pieces, choose who moves — then play it out, save it, or share it by code.</p>
     </div>
-    <div class="field online-only host-only">
-      <span class="field-label">You command</span>
-      <div class="seg" id="seg-host-side">
-        <button data-v="bone" class="seg-btn active">The Bone Court</button>
-        <button data-v="ash" class="seg-btn">The Ash Court</button>
-      </div>
+    <div class="feature">
+      <div class="ico">❦</div>
+      <h3>Keep the Annals</h3>
+      <p>Save finished games, step through them move by move, draw arrows and write commentary on any moment, then share the whole replay.</p>
     </div>
-    <div class="field online-only join-only">
-      <span class="field-label">Room code</span>
-      <input id="join-code" class="text-input" maxlength="8" placeholder="e.g. K7QF"
-             autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <div class="feature">
+      <div class="ico">✦</div>
+      <h3>Die Flucht</h3>
+      <p>Once per game, an unmoved Krone may bolt up to three squares in a straight line — through empty, unthreatened ground alone.</p>
     </div>
-    <p class="dialog-note online-only">Play travels directly between your two browsers; share the code by any messenger you like.</p>
-    <div class="dialog-actions">
-      <button class="btn ghost" id="btn-primer-new">First Time? The Primer</button>
-      <button class="btn ghost" id="btn-new-cancel">Cancel</button>
-      <button class="btn primary" id="btn-new-start">Begin</button>
+  </section>
+
+  <h2 class="section-head" id="rules">The Rules, Briefly</h2>
+  <div class="rules-grid">
+    <div>
+      <h4>The board</h4>
+      <p>Eleven by eleven, ash-grey and bone-pale. The centre — the <b>Aschenstuhl</b> — is forever empty: no piece may stand on it, and sliders cannot see past it.</p>
+    </div>
+    <div>
+      <h4>How to win</h4>
+      <p>Isolate the enemy Krone. At the start of each turn his court is judged: if every neighbouring square is filled, threatened, or off the board — and a genuine door is barred by the enemy — his reign ends.</p>
+    </div>
+    <div>
+      <h4>The court</h4>
+      <p class="piece-line">
+        <b>Krone</b> one step, onto open ground, never captured and never capturing.<br>
+        <b>Kanzler</b> (×2) any distance, any line.<br>
+        <b>Marschall</b> orthogonal. <b>Prälat</b> diagonal.<br>
+        <b>Gesandter</b> the leaping L. <b>Bürger</b> the footman, one step forward.
+      </p>
+    </div>
+    <div>
+      <h4>Draws</h4>
+      <p>The Long Siege (a thrice-repeated position), the Long Winter (fifty quiet moves each), the Empty Court, Mutual Ruin, the Frozen Court, or a Parley agreed between players.</p>
     </div>
   </div>
-</div>
 
-<!-- Rules dialog -->
-<div class="overlay hidden" id="ov-rules">
-  <div class="dialog wide">
-    <h2>The Rules, Briefly</h2>
+  <h2 class="section-head">What Isolation Looks Like</h2>
+  <p style="text-align:center; max-width:640px; margin:0 auto; color:var(--ink-dim); font-size:15.5px; line-height:1.55;">
+    A Krone (♚) is judged by the eight squares around him. He falls only when every one of them is a piece, a threatened empty square (✕), or the board's edge — <em>and</em> the enemy holds at least one genuinely empty door.
+  </p>
+  <div class="iso-figures">
+    <figure class="iso">
+      <div class="iso-board" aria-hidden="true">
+        <span class="c ash"><span class="enemy">♜</span></span><span class="c bone"><span class="own">♟</span></span><span class="c ash"><span class="enemy">♞</span></span>
+        <span class="c bone"><span class="own">♟</span></span><span class="c ash"><span class="krone">♚</span></span><span class="c bone threat"></span>
+        <span class="c ash"><span class="enemy">♝</span></span><span class="c bone threat"></span><span class="c ash open"></span>
+      </div>
+      <figcaption><b>He breathes.</b> One corner is still empty and unthreatened (✓). While a single safe door remains, the Krone lives — no matter how close the walls.</figcaption>
+    </figure>
+    <figure class="iso doomed">
+      <div class="iso-board" aria-hidden="true">
+        <span class="c ash"><span class="enemy">♜</span></span><span class="c bone threat"></span><span class="c ash"><span class="own">♟</span></span>
+        <span class="c bone threat"></span><span class="c ash"><span class="krone">♚</span></span><span class="c bone"><span class="enemy">♞</span></span>
+        <span class="c ash"><span class="own">♟</span></span><span class="c bone"><span class="enemy">♝</span></span><span class="c ash threat"></span>
+      </div>
+      <figcaption><b>Isolated.</b> Every door is a piece or a threatened empty square, and the enemy nails the last ones shut (✕). The reign ends — no blade at the throat required.</figcaption>
+    </figure>
+  </div>
+  <div class="iso-legend">
+    <span><b class="lg-own">♚</b> the Krone (Bone)</span>
+    <span><b class="lg-own">♟</b> his own court</span>
+    <span><b class="lg-enemy">♞</b> the enemy (Ash)</span>
+    <span><b class="lg-x">✕</b> enemy holds this empty square</span>
+    <span><b class="lg-open">✓</b> a safe, open door</span>
+  </div>
+
+  <details class="full-rules">
+    <summary>The Full Rules</summary>
     <div class="rules-body">
       <h3>The board</h3>
-      <p>Eleven by eleven, ash-grey and bone-pale. The centre square — the <strong>Aschenstuhl</strong>, the Ash Seat — is permanently empty. No piece may ever occupy it, sliding pieces cannot see past it, and a Gesandter may leap over it but never land on it. For the Krone it behaves exactly as the edge of the board: a square he cannot step onto, but never an enemy hand at his throat. A Bürger whose file runs into the throne — standing at f5 or f7 — may step diagonally around it onto e6 or g6, capture or no capture: the game's one non-capturing diagonal step.</p>
+      <p>Eleven by eleven, ash-grey and bone-pale. The centre square — the <span class="g">Aschenstuhl</span>, the Ash Seat — is permanently empty. No piece may ever occupy it, sliding pieces cannot see past it, and a Gesandter may leap over it but never land on it. For the Krone it behaves exactly as the edge of the board: a square he cannot step onto, but never an enemy hand at his throat. A Bürger whose file runs into the throne may step diagonally around it, capture or no capture — the game's one non-capturing diagonal step.</p>
 
       <h3>The pieces</h3>
       <ul>
-        <li><strong><span class="rule-ico" data-piece="1"></span> Krone</strong> — one square in any direction, onto open ground only. Never captured, and never captures; see Isolation.</li>
-        <li><strong><span class="rule-ico" data-piece="2"></span> Kanzler</strong> (×2) — any distance in any direction. Each side has two, flanking the Krone from the first move.</li>
-        <li><strong><span class="rule-ico" data-piece="3"></span> Marschall</strong> — any distance orthogonally.</li>
-        <li><strong><span class="rule-ico" data-piece="4"></span> Prälat</strong> — any distance diagonally.</li>
-        <li><strong><span class="rule-ico" data-piece="5"></span> Gesandter</strong> — the broken L-step; leaps over anything in its path.</li>
-        <li><strong><span class="rule-ico" data-piece="6"></span> Bürger</strong> — one square forward; on its first move only, it may instead advance one, two, or three squares in a straight line. Captures one square diagonally forward, at any time. A Bürger reaching the far rank promotes — <em>only ever</em> to a Gesandter. There is no en passant.</li>
+        <li><span class="g">♚ Krone</span> — one square in any direction, onto open ground only. Never captured, and never captures; see Isolation.</li>
+        <li><span class="g">♛ Kanzler</span> (×2) — any distance in any direction. Each side has two, flanking the Krone from the first move.</li>
+        <li><span class="g">♜ Marschall</span> — any distance orthogonally.</li>
+        <li><span class="g">♝ Prälat</span> — any distance diagonally.</li>
+        <li><span class="g">♞ Gesandter</span> — the broken L-step; leaps over anything in its path.</li>
+        <li><span class="g">♟ Bürger</span> — one square forward; on its first move only, it may instead advance one, two, or three squares in a straight line. Captures one square diagonally forward, at any time. A Bürger reaching the far rank promotes — <em>only ever</em> to a Gesandter. There is no en passant.</li>
       </ul>
 
       <h3>Die Flucht</h3>
       <p>An unmoved Krone may, once per game, leap up to three squares in a straight orthogonal line — provided every square he passes through and lands on is empty and unthreatened. Any ordinary Krone move forfeits the option forever.</p>
 
       <h3>Isolation — the only way to win</h3>
-      <p>There is no check, no checkmate, and no stalemate-as-draw. At the start of every turn, before any piece moves, the Krone of the player to move is examined. He is <strong>Isolated</strong> — and the game instantly lost — when both of the following hold:</p>
+      <p>There is no check, no checkmate, and no stalemate-as-draw. At the start of every turn, before any piece moves, the Krone of the player to move is examined. He is <span class="g">Isolated</span> — and the game instantly lost — when both of the following hold:</p>
       <ol>
         <li>Every square adjacent to him (including any square still reachable by Die Flucht) is occupied by a piece of <em>either</em> colour, threatened by an enemy piece, or off the board.</li>
         <li>Either the Krone's own square is directly threatened by an enemy piece, or at least one adjacent square that is <em>genuinely empty</em> — held by no piece of either colour — is threatened by an enemy piece.</li>
       </ol>
-      <p>An enemy threat against a square already filled by the Krone's own court counts for nothing — that door was never going to open for him regardless. Only two things end a Krone's reign: a blade genuinely at his own throat, or a genuinely empty door that the enemy, and the enemy alone, has nailed shut. A Krone is never undone by his own house alone — he is undone by his own house under siege, and it makes no difference that his own men built most of the wall.</p>
-      <p><strong>The Krone is judged as if already lifted from his square.</strong> Every threat that concerns his movement or survival is tested as though he were not standing where he stands: a Kanzler bearing directly upon him threatens the ground behind him just as surely as the ground before him. A king does not shelter a doorway with his own body.</p>
-      <p><strong>The Krone cannot be taken.</strong> No move may capture a Krone — it is simply not a legal move, exactly as landing on the Aschenstuhl is not. A Krone may stand indefinitely on a threatened square; only Isolation ends his part in the game.</p>
-      <p><strong>The Krone takes no one.</strong> The courtesy is returned: the Krone may never capture, and moves only onto open ground. Kronspiel permits no reaction — a Krone does not answer a wall by tearing a brick from it, and an enemy piece at his elbow is simply part of the wall.</p>
-      <p><strong>There is no rescue.</strong> Isolation is judged before the court is given leave to act. A piece that could have captured the offending enemy, or blocked its line, does not save him — the move that would have done it always comes one turn too late. The one safeguard the rules provide: you may never voluntarily make a move that isolates your own Krone, just as the Krone may never step into an enemy's line.</p>
-      <p><strong>The Palsied Court.</strong> A player with no legal move at all — Krone included — loses at once, provided the enemy has a hand in it by the test above: a blade at the Krone's throat, or a threat against a genuinely empty square beside him. Paralysed under siege is fallen. Without any enemy touch, it is instead the Frozen Court, and drawn.</p>
+      <p>An enemy threat against a square already filled by the Krone's own court counts for nothing — that door was never going to open for him regardless. Only two things end a Krone's reign: a blade genuinely at his own throat, or a genuinely empty door that the enemy, and the enemy alone, has nailed shut. A Krone is never undone by his own house alone — he is undone by his own house under siege.</p>
+      <p><span class="g">The Krone is judged as if already lifted from his square.</span> Every threat that concerns his survival is tested as though he were not standing where he stands: a Kanzler bearing directly upon him threatens the ground behind him just as surely as the ground before him. A king does not shelter a doorway with his own body.</p>
+      <p><span class="g">The Krone cannot be taken, and takes no one.</span> No move may capture a Krone — it is simply not legal, exactly as landing on the Aschenstuhl is not. In return, the Krone never captures and moves only onto open ground. He may stand indefinitely on a threatened square; only Isolation ends his part in the game.</p>
+      <p><span class="g">There is no rescue.</span> Isolation is judged before the court is given leave to act. A piece that could have captured the offending enemy, or blocked its line, does not save him — the move that would have done it always comes one turn too late. The one safeguard: you may never voluntarily make a move that isolates your own Krone.</p>
+      <p><span class="g">The Palsied Court.</span> A player with no legal move at all — Krone included — loses at once, provided the enemy has a hand in it by the test above. Paralysed under siege is fallen. Without any enemy touch, it is instead the Frozen Court, and drawn.</p>
 
       <h3>Draws</h3>
       <ul>
-        <li><strong>The Long Siege</strong> — the same position, same player to move, a third time; either player may claim.</li>
-        <li><strong>The Long Winter</strong> — fifty moves by each side with no Bürger moved and no capture; either player may claim.</li>
-        <li><strong>The Empty Court</strong> — lone Krone against lone Krone; drawn automatically.</li>
-        <li><strong>Mutual Ruin</strong> — both Krone isolated at the start of the same round; drawn, and considered the most honest outcome the board can produce.</li>
-        <li><strong>The Frozen Court</strong> — no legal move remains, yet no enemy hand touches the wall: the court has choked itself still, alone. Drawn automatically.</li>
-        <li><strong>Parley</strong> — a draw agreed between the players at any point.</li>
+        <li><span class="g">The Long Siege</span> — the same position, same player to move, a third time; either player may claim.</li>
+        <li><span class="g">The Long Winter</span> — fifty moves by each side with no Bürger moved and no capture; either player may claim.</li>
+        <li><span class="g">The Empty Court</span> — lone Krone against lone Krone; drawn automatically.</li>
+        <li><span class="g">Mutual Ruin</span> — both Krone isolated at the start of the same round; drawn, and reckoned the most honest outcome the board can produce.</li>
+        <li><span class="g">The Frozen Court</span> — no legal move remains, yet no enemy hand touches the wall; drawn automatically.</li>
+        <li><span class="g">Parley</span> — a draw agreed between the players at any point.</li>
       </ul>
 
       <h3>Conventions of this table</h3>
       <p>The Bone Court moves first. Ranks run 1–11 from the Bone home rank; files run a–k from the left of the Bone player.</p>
     </div>
-    <div class="dialog-actions">
-      <button class="btn ghost" id="btn-primer-rules">Learn by Doing — the Primer</button>
-      <button class="btn primary" id="btn-rules-close">Close</button>
-    </div>
-  </div>
-</div>
+  </details>
 
-<!-- Options dialog -->
-<div class="overlay hidden" id="ov-options">
-  <div class="dialog">
-    <h2>Options</h2>
-    <div class="field">
-      <span class="field-label">Piece style</span>
-      <div class="seg" id="seg-pieces">
-        <button data-v="sigils" class="seg-btn active">Court Sigils</button>
-        <button data-v="classic" class="seg-btn">Classic Glyphs</button>
-      </div>
-    </div>
-    <div class="pieceset-preview" id="pieceset-preview"></div>
-    <div class="dialog-actions">
-      <button class="btn primary" id="btn-options-close">Close</button>
-    </div>
+  <div class="home-foot">
+    <a class="btn primary xl" href="play.html">Take Your Seat</a>
   </div>
-</div>
 
-<!-- Confirm dialog (parley / resign / new-game-in-progress) -->
-<div class="overlay hidden" id="ov-confirm">
-  <div class="dialog">
-    <h2 id="confirm-title">Are you certain?</h2>
-    <p id="confirm-text"></p>
-    <div class="dialog-actions">
-      <button class="btn ghost" id="btn-confirm-no">No</button>
-      <button class="btn primary" id="btn-confirm-yes">Yes</button>
+  <section class="workshop">
+    <h2 class="section-head">From the Workshop</h2>
+    <p class="workshop-lead">Kronspiel's rules were not decreed — they were playtested. Tens of thousands of self-play games shaped the win conditions, the draw rules, and the opening theory. The findings are set down here.</p>
+    <div class="workshop-links">
+      <a href="sim_results.html">
+        <div class="wl-title">The Rules Commission</div>
+        <div class="wl-desc">The simulation study behind the rules — how win, loss, and draw conditions were weighed and settled.</div>
+      </a>
+      <a href="sim_openings.html">
+        <div class="wl-title">The Opening Book</div>
+        <div class="wl-desc">Opening lines and replies, ranked by results across the engine's self-play.</div>
+      </a>
+      <a href="Kronspiel_Rules.md">
+        <div class="wl-title">The Full Ruleset</div>
+        <div class="wl-desc">The complete written rules of Kronspiel, in prose.</div>
+      </a>
     </div>
-  </div>
-</div>
+  </section>
 
-<!-- Game over -->
-<div class="overlay hidden" id="ov-over">
-  <div class="dialog gameover">
-    <div class="gameover-rule"></div>
-    <h2 id="over-title"></h2>
-    <p id="over-text"></p>
-    <div class="dialog-actions">
-      <button class="btn ghost" id="btn-over-board">View the Board</button>
-      <button class="btn hidden" id="btn-over-rematch">Offer Rematch</button>
-      <button class="btn primary" id="btn-over-new">New Game</button>
-    </div>
-  </div>
-</div>
-
-<!-- Online: awaiting connection -->
-<div class="overlay hidden" id="ov-wait">
-  <div class="dialog netwait">
-    <h2 id="wait-title">The Table Is Set</h2>
-    <p id="wait-text">Share this code with the other court:</p>
-    <div class="room-code" id="wait-code"></div>
-    <div id="wait-status"></div>
-    <div class="dialog-actions">
-      <button class="btn" id="btn-copy-invite">Copy Invitation</button>
-      <button class="btn ghost" id="btn-wait-cancel">Cancel</button>
-    </div>
-  </div>
-</div>
-<button class="btn result-chip hidden" id="btn-show-result">Show Result</button>
-<button class="focus-btn" id="btn-focus" title="Full-screen view" aria-label="Toggle full-screen view">⛶</button>
-<button class="focus-btn unavailable" id="btn-focus-chat" title="The Parlour" aria-label="Toggle chat">✉<span id="chat-unread" class="chat-unread hidden"></span></button>
-
-<script src="js/vendor/peerjs.min.js"></script>
-<script type="module" src="js/main.js"></script>
+  <footer class="colophon">
+    <p>“You need not kill a king to finish him. You need only see that he has nowhere left to stand.”</p>
+    <p class="attribution">— Knight-Captain Sigismund von Höthbacher, <em>Ordo Theoderici Cohortis Niger</em></p>
+  </footer>
+</main>
 </body>
 </html>
