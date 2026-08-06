@@ -18,6 +18,10 @@
   --sq-bone: #c9baa0;
   --sq-ash: #564e44;
   --sq-asch: #17130f;
+  /* Board theme — the light/dark square faces. JS overrides these on <body>
+     from the chosen theme (Options → Board theme); this is the default. */
+  --sq-light: linear-gradient(145deg, #d2c4a8 0%, #c7b89d 55%, #baab8e 100%);
+  --sq-dark:  linear-gradient(145deg, #5e564c 0%, #554d43 55%, #4a4239 100%);
   --piece-bone: #f3ecdc;
   --piece-ash: #211c17;
   --open-green: #6f9e5f;
@@ -444,8 +448,8 @@ h1 {
 }
 
 .sq { position: relative; cursor: pointer; transition: filter 0.12s; }
-.sq.bone { background: linear-gradient(145deg, #d2c4a8 0%, #c7b89d 55%, #baab8e 100%); }
-.sq.ash  { background: linear-gradient(145deg, #5e564c 0%, #554d43 55%, #4a4239 100%); }
+.sq.bone { background: var(--sq-light); }
+.sq.ash  { background: var(--sq-dark); }
 .sq.bone:hover, .sq.ash:hover { filter: brightness(1.06); }
 
 .sq.bone::after, .sq.ash::after {
@@ -1082,6 +1086,23 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 .pieceset-preview .pv svg.sigil { width: 72%; height: 72%; }
 .pieceset-preview .pv.bone-piece { text-shadow: 0 1px 0 #8d8471, 0 2px 3px rgba(0,0,0,0.75); color: var(--piece-bone); }
 .pieceset-preview .pv.ash-piece { text-shadow: 0 1px 0 #000, 0 0 3px rgba(243,236,220,0.5); color: var(--piece-ash); }
+
+/* board theme swatches — each a little 2×2 board in its own colours */
+.board-themes { display: flex; flex-wrap: wrap; gap: 9px; margin: 4px 0 2px; }
+.board-swatch {
+  width: 46px; height: 46px; padding: 0; cursor: pointer;
+  border: 1px solid #2e2820; border-radius: 4px;
+  background: conic-gradient(
+    var(--l) 0deg 90deg, var(--d) 90deg 180deg,
+    var(--l) 180deg 270deg, var(--d) 270deg 360deg);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.board-swatch:hover { transform: translateY(-1px); border-color: var(--gold); }
+.board-swatch.active {
+  border-color: var(--gold-bright);
+  box-shadow: 0 0 0 1px var(--gold), 0 0 11px rgba(200, 162, 74, 0.35);
+}
 
 /* ---------- sidebar ---------- */
 

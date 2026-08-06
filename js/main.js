@@ -909,6 +909,7 @@ function loadPrefs() {
   try {
     const o = JSON.parse(localStorage.getItem(PREFS_KEY));
     if (o && PIECE_SETS[o.pieceSet]) prefs = { ...prefs, ...o };
+    if (prefs.boardTheme && !BOARD_THEMES.some((t) => t.key === prefs.boardTheme)) delete prefs.boardTheme;
   } catch { /* keep defaults */ }
 }
 
@@ -919,6 +920,47 @@ const showLabels = () => prefs.boardLabels ?? !isMobileView();
 
 function applyBoardLabels() {
   document.body.classList.toggle('no-board-labels', !showLabels());
+}
+
+// ---------------------------------------------------------------------------
+// Board themes — the light/dark square faces, chosen in Options. Each theme is
+// two representative colours; the display gradient and the export fills are
+// both derived from them, so the swatch, the board, and the copied image agree.
+// ---------------------------------------------------------------------------
+
+const BOARD_THEMES = [
+  { key: '',       name: 'Ash & Bone', light: '#c7b89d', dark: '#554d43' },
+  { key: 'walnut', name: 'Walnut',     light: '#c39a6b', dark: '#5c3d24' },
+  { key: 'ember',  name: 'Ember',      light: '#d0a878', dark: '#7a3b2b' },
+  { key: 'forest', name: 'Forest',     light: '#e4dabd', dark: '#5c7d4d' },
+  { key: 'slate',  name: 'Slate',      light: '#c2c8d0', dark: '#4e5863' },
+  { key: 'marble', name: 'Marble',     light: '#d8d4cb', dark: '#79766f' },
+];
+
+const boardTheme = () => BOARD_THEMES.find((t) => t.key === (prefs.boardTheme || '')) || BOARD_THEMES[0];
+
+// Nudge a hex colour toward white (amt>0) or black (amt<0); amt in 0..1.
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const t = amt < 0 ? 0 : 255, p = Math.abs(amt);
+  const ch = (c) => Math.round(c + (t - c) * p);
+  const r = ch((n >> 16) & 255), g = ch((n >> 8) & 255), b = ch(n & 255);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+// A subtly bevelled square face built from one representative colour.
+const squareGradient = (c) => `linear-gradient(145deg, ${shade(c, 0.08)} 0%, ${c} 55%, ${shade(c, -0.08)} 100%)`;
+
+function applyBoardTheme() {
+  const t = boardTheme();
+  document.body.style.setProperty('--sq-light', squareGradient(t.light));
+  document.body.style.setProperty('--sq-dark', squareGradient(t.dark));
+}
+
+function buildBoardThemeSwatches() {
+  const cur = prefs.boardTheme || '';
+  $('board-themes').innerHTML = BOARD_THEMES.map((t) =>
+    `<button class="board-swatch${t.key === cur ? ' active' : ''}" data-theme="${t.key}" ` +
+    `title="${t.name}" aria-label="${t.name}" style="--l:${t.light}; --d:${t.dark}"></button>`).join('');
 }
 
 function load() {
@@ -1418,13 +1460,14 @@ function displayState() {
 // then rasterise it to a PNG and copy it to the clipboard.
 function buildBoardSvg() {
   const state = displayState();
+  const theme = boardTheme();
   const cells = [];
   for (let disp = 0; disp < N * N; disp++) {
     const dr = Math.floor(disp / N), dc = disp % N;
     const sq = dispToSq(dr, dc);
-    let fill = '#c7b89d';
+    let fill = theme.light;
     if (sq === ASCH) fill = '#17130f';
-    else if ((rowOf(sq) + colOf(sq)) % 2 === 0) fill = '#514a40';
+    else if ((rowOf(sq) + colOf(sq)) % 2 === 0) fill = theme.dark;
     cells.push(`<rect x="${dc * 10}" y="${dr * 10}" width="10" height="10" fill="${fill}"/>`);
     if (sq === ASCH) {
       cells.push(`<text x="${dc * 10 + 5}" y="${dr * 10 + 5.4}" font-size="5.2" text-anchor="middle"
@@ -3016,9 +3059,18 @@ function wireUi() {
     $('seg-labels').querySelectorAll('.seg-btn').forEach((b) =>
       b.classList.toggle('active', b.dataset.v === (showLabels() ? 'show' : 'hide')));
     paintPieceSetPreview();
+    buildBoardThemeSwatches();
     $('ov-options').classList.remove('hidden');
   });
   $('btn-options-close').addEventListener('click', () => $('ov-options').classList.add('hidden'));
+  $('board-themes').addEventListener('click', (e) => {
+    const b = e.target.closest('.board-swatch');
+    if (!b) return;
+    prefs.boardTheme = b.dataset.theme;
+    savePrefs();
+    applyBoardTheme();
+    $('board-themes').querySelectorAll('.board-swatch').forEach((s) => s.classList.toggle('active', s === b));
+  });
   wireSeg('seg-pieces', (v) => {
     prefs.pieceSet = v;
     savePrefs();
@@ -3104,6 +3156,7 @@ function wireUi() {
 
 loadPrefs();
 applyBoardLabels();
+applyBoardTheme();
 wireUi();
 const restored = load();
 if (!restored) {
