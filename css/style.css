@@ -18,10 +18,14 @@
   --sq-bone: #c9baa0;
   --sq-ash: #564e44;
   --sq-asch: #17130f;
-  /* Board theme — the light/dark square faces. JS overrides these on <body>
-     from the chosen theme (Options → Board theme); this is the default. */
+  /* Board theme — square faces, frame, and throne. JS overrides these on
+     <body> from the chosen theme (Options → Board theme); these are the
+     default (Ash & Bone) values. */
   --sq-light: linear-gradient(145deg, #d2c4a8 0%, #c7b89d 55%, #baab8e 100%);
   --sq-dark:  linear-gradient(145deg, #5e564c 0%, #554d43 55%, #4a4239 100%);
+  --sq-frame: linear-gradient(135deg, #2b2214 0%, #1b140c 45%, #241a0f 78%, #2a2013 100%);
+  --frame-edge: #453823;
+  --asch-core: #2b2013;
   --piece-bone: #f3ecdc;
   --piece-ash: #211c17;
   --open-green: #6f9e5f;
@@ -360,8 +364,8 @@ h1 {
     repeating-linear-gradient(94deg,
       rgba(0, 0, 0, 0) 0px, rgba(0, 0, 0, 0.12) 3px,
       rgba(255, 220, 160, 0.02) 6px, rgba(0, 0, 0, 0) 9px),
-    linear-gradient(135deg, #2b2214 0%, #1b140c 45%, #241a0f 78%, #2a2013 100%);
-  border: 1px solid #453823;
+    var(--sq-frame);
+  border: 1px solid var(--frame-edge);
   border-radius: 4px;
   box-shadow:
     0 0 0 1px #0a0806,
@@ -465,7 +469,7 @@ h1 {
 /* The Aschenstuhl — a cold hearth at the heart of the board */
 .sq.asch {
   background:
-    radial-gradient(circle at 50% 45%, #2b2013 0%, var(--sq-asch) 58%, #0d0a07 100%);
+    radial-gradient(circle at 50% 45%, var(--asch-core) 0%, var(--sq-asch) 58%, #0d0a07 100%);
   cursor: default;
   box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.95);
 }
@@ -1921,7 +1925,7 @@ body.no-board-labels .files { display: none; }
   /* Idle, phone-sized: the mobile board is frameless, so give it the frame's
      wood back — the menu floats over a wooden surface, not the bare app bg. */
   body.idle .board-frame {
-    background: linear-gradient(135deg, #2b2214 0%, #1b140c 45%, #241a0f 78%, #2a2013 100%);
+    background: var(--sq-frame);
     border-radius: 3px;
   }
 

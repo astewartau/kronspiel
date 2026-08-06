@@ -950,10 +950,26 @@ function shade(hex, amt) {
 // A subtly bevelled square face built from one representative colour.
 const squareGradient = (c) => `linear-gradient(145deg, ${shade(c, 0.08)} 0%, ${c} 55%, ${shade(c, -0.08)} 100%)`;
 
+// The throne's core colour, derived from the theme's dark square.
+const aschColor = (t = boardTheme()) => shade(t.dark, -0.62);
+
 function applyBoardTheme() {
   const t = boardTheme();
-  document.body.style.setProperty('--sq-light', squareGradient(t.light));
-  document.body.style.setProperty('--sq-dark', squareGradient(t.dark));
+  const s = document.body.style;
+  // The default (Ash & Bone) keeps the hand-tuned :root faces, frame, and
+  // throne exactly; only a chosen theme overrides them.
+  const props = ['--sq-light', '--sq-dark', '--sq-frame', '--frame-edge', '--asch-core', '--sq-asch'];
+  if (!t.key) { props.forEach((p) => s.removeProperty(p)); return; }
+  s.setProperty('--sq-light', squareGradient(t.light));
+  s.setProperty('--sq-dark', squareGradient(t.dark));
+  // Frame and throne take the theme's dark square, deepened, so they read as
+  // the same wood/stone as the board rather than a fixed brown.
+  const frame = shade(t.dark, -0.52);
+  s.setProperty('--sq-frame',
+    `linear-gradient(135deg, ${shade(frame, 0.1)} 0%, ${shade(frame, -0.2)} 45%, ${shade(frame, -0.04)} 78%, ${shade(frame, 0.05)} 100%)`);
+  s.setProperty('--frame-edge', shade(t.dark, -0.24));
+  s.setProperty('--asch-core', shade(t.dark, -0.32));
+  s.setProperty('--sq-asch', aschColor(t));
 }
 
 function buildBoardThemeSwatches() {
@@ -1466,7 +1482,7 @@ function buildBoardSvg() {
     const dr = Math.floor(disp / N), dc = disp % N;
     const sq = dispToSq(dr, dc);
     let fill = theme.light;
-    if (sq === ASCH) fill = '#17130f';
+    if (sq === ASCH) fill = aschColor(theme);
     else if ((rowOf(sq) + colOf(sq)) % 2 === 0) fill = theme.dark;
     cells.push(`<rect x="${dc * 10}" y="${dr * 10}" width="10" height="10" fill="${fill}"/>`);
     if (sq === ASCH) {
