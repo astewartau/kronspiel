@@ -77,6 +77,20 @@
             <div id="files" class="files"></div>
           </div>
         </div>
+
+        <!-- Game over — the verdict laid over the board itself -->
+        <div id="ov-over" class="board-veil hidden">
+          <div class="dialog gameover">
+            <div class="gameover-rule"></div>
+            <h2 id="over-title"></h2>
+            <p id="over-text"></p>
+            <div class="dialog-actions">
+              <button class="btn ghost" id="btn-over-review">Review &amp; Annotate</button>
+              <button class="btn hidden" id="btn-over-rematch">Offer Rematch</button>
+              <button class="btn primary" id="btn-over-ok">OK</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="player-bar" id="bar-bottom">
@@ -88,12 +102,44 @@
     </section>
 
     <aside class="sidebar">
+      <!-- The empty court — the menu, shown in the sidebar while the (blurred) board waits -->
+      <div id="court-menu" class="court-menu log-card" aria-label="Main menu">
+        <div class="cm-head">The Court Awaits</div>
+        <p class="cm-sub">The board stands ready. Choose your entrance.</p>
+        <div class="cm-tiles">
+          <button class="hall-tile primary" id="cm-new">
+            <span class="ht-ico">⚔</span>
+            <span class="ht-body"><span class="ht-name">New Game</span><span class="ht-sub">Two players, online, or against the Court</span></span>
+          </button>
+          <button class="hall-tile" id="cm-puzzle">
+            <span class="ht-ico">✦</span>
+            <span class="ht-body"><span class="ht-name">Puzzle Editor</span><span class="ht-sub">Build, share, and play any position</span></span>
+          </button>
+          <button class="hall-tile" id="cm-annals">
+            <span class="ht-ico">⏵</span>
+            <span class="ht-body"><span class="ht-name">The Annals</span><span class="ht-sub">Saved and set-aside games, replayed</span></span>
+          </button>
+          <button class="hall-tile" id="cm-rules">
+            <span class="ht-ico">❦</span>
+            <span class="ht-body"><span class="ht-name">The Rules</span><span class="ht-sub">Isolation, Die Flucht, and the draws</span></span>
+          </button>
+          <button class="hall-tile" id="cm-primer">
+            <span class="ht-ico">❧</span>
+            <span class="ht-body"><span class="ht-name">The Primer</span><span class="ht-sub">Learn the game by playing it</span></span>
+          </button>
+          <button class="hall-tile" id="cm-options">
+            <span class="ht-ico">✧</span>
+            <span class="ht-body"><span class="ht-name">Options</span><span class="ht-sub">Piece styles and board coordinates</span></span>
+          </button>
+        </div>
+      </div>
+
       <div class="log-card tutor-card hidden" id="tutor-card">
         <h2>The Primer <span id="tutor-step" class="tutor-step"></span></h2>
         <h3 id="tutor-title" class="tutor-title"></h3>
         <p id="tutor-text" class="tutor-text"></p>
         <div class="tutor-actions">
-          <button id="btn-tutor-exit" class="btn mini ghost">Leave the Primer</button>
+          <button id="btn-tutor-exit" class="btn mini ghost">Leave the Table</button>
           <button id="btn-tutor-back" class="btn mini ghost hidden">Back</button>
           <button id="btn-tutor-next" class="btn mini primary">Continue</button>
         </div>
@@ -113,6 +159,7 @@
           <button id="btn-resign" class="btn danger">Resign</button>
         </div>
         <button id="btn-annotate" class="btn annotate-start">Annotate the Board</button>
+        <button id="btn-review" class="btn hidden">Review the Game</button>
         <div id="claims" class="claims hidden">
           <button id="btn-siege" class="btn claim hidden">Claim the Long Siege</button>
           <button id="btn-winter" class="btn claim hidden">Claim the Long Winter</button>
@@ -121,6 +168,8 @@
           <input type="checkbox" id="chk-escapes">
           <span>Show the Krone's escape squares</span>
         </label>
+        <button id="btn-return-editor" class="btn hidden" title="Return to the puzzle editor — the position you built is kept">Back to the Editor</button>
+        <button id="btn-exit-game" class="btn ghost" title="Close this game and return to the menu">Leave the Table</button>
       </div>
 
       <div id="annotate-bar" class="annotate-bar m-sheet hidden">
@@ -178,11 +227,10 @@
         <div class="anno-row">
           <button id="btn-ed-copy" class="btn mini" title="Copy a shareable link to this position">Copy Link</button>
           <button id="btn-ed-save" class="btn mini" title="Save this position to your library">Save…</button>
-          <button id="btn-ed-library" class="btn mini" title="Browse your saved puzzles">Library…</button>
         </div>
         <div class="anno-row ed-actions">
-          <button id="btn-ed-play" class="btn mini primary" title="Start playing from this position">Play from Here</button>
-          <button id="btn-ed-done" class="btn mini ghost" title="Leave the editor">Done</button>
+          <button id="btn-ed-play" class="btn mini primary" title="Play this position — you can come back to the editor at any time">Play from Here</button>
+          <button id="btn-ed-done" class="btn mini ghost" title="Close the editor and return to the menu — you'll be asked to save first">Leave the Table</button>
         </div>
       </div>
 
@@ -198,16 +246,14 @@
         </div>
         <div class="replay-count" id="replay-count"></div>
         <textarea id="replay-commentary" class="replay-commentary" rows="3" placeholder="Narrate this moment — write as much as you like…"></textarea>
+        <button id="btn-rp-resume" class="btn mini primary hidden" title="Take up this game from the position shown and keep playing">Resume from Here</button>
         <button id="btn-rp-annotate" class="btn mini" title="Draw on this position">Annotate this Position</button>
         <div class="replay-save">
           <input id="replay-name-input" class="text-input" maxlength="60" placeholder="Name this game" autocomplete="off">
           <button id="btn-rp-save" class="btn mini primary" title="Save this game — with your notes — to the Annals">Save to the Annals</button>
         </div>
-        <div class="anno-row">
-          <button id="btn-rp-share" class="btn mini" title="Copy a shareable replay code">Share</button>
-          <button id="btn-rp-newgame" class="btn mini">New Game</button>
-        </div>
-        <button id="btn-rp-exit" class="btn mini ghost rp-close">Close Replay</button>
+        <button id="btn-rp-share" class="btn mini" title="Copy a shareable replay code">Share</button>
+        <button id="btn-rp-exit" class="btn mini ghost rp-close">Leave the Table</button>
       </div>
 
       <div class="log-card m-sheet" id="sheet-chronicle">
@@ -391,6 +437,19 @@
   </div>
 </div>
 
+<!-- Leaving something unsaved (a live game, an unsaved puzzle) -->
+<div class="overlay hidden" id="ov-leave">
+  <div class="dialog">
+    <h2 id="leave-title"></h2>
+    <p id="leave-text" class="dialog-note"></p>
+    <div class="dialog-actions leave-actions">
+      <button class="btn ghost" id="btn-leave-stay">Stay</button>
+      <button class="btn" id="btn-leave-discard">Leave without Saving</button>
+      <button class="btn primary" id="btn-leave-save">Save and Leave</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirm dialog (parley / resign / new-game-in-progress) -->
 <div class="overlay hidden" id="ov-confirm">
   <div class="dialog">
@@ -418,25 +477,11 @@
   </div>
 </div>
 
-<!-- Game over -->
-<div class="overlay hidden" id="ov-over">
-  <div class="dialog gameover">
-    <div class="gameover-rule"></div>
-    <h2 id="over-title"></h2>
-    <p id="over-text"></p>
-    <div class="dialog-actions">
-      <button class="btn ghost" id="btn-over-review">Review &amp; Annotate</button>
-      <button class="btn hidden" id="btn-over-rematch">Offer Rematch</button>
-      <button class="btn primary" id="btn-over-new">New Game</button>
-    </div>
-  </div>
-</div>
-
 <!-- The Annals — saved games -->
 <div class="overlay hidden" id="ov-annals">
   <div class="dialog wide">
     <h2>The Annals</h2>
-    <p class="dialog-note">Games you have set down. Open one to walk through it move by move — and annotate as you go.</p>
+    <p class="dialog-note">Games you have set down, finished and unfinished alike. Open one to walk through it move by move — annotate as you go, or take an unfinished game back up and keep playing.</p>
     <div id="annals-list" class="annals-list"></div>
     <div class="dialog-actions">
       <button class="btn ghost" id="btn-annals-load">Load a Shared Replay</button>
@@ -448,12 +493,13 @@
 <!-- The Puzzle Library — saved positions -->
 <div class="overlay hidden" id="ov-puzzles">
   <div class="dialog wide">
-    <h2>Puzzle Library</h2>
-    <p class="dialog-note">Saved positions. Open one in the editor, copy its code to share, or remove it.</p>
+    <h2>The Puzzle Library</h2>
+    <p class="dialog-note">Your saved positions. Open one in the editor, copy a link to share it, or begin a new one from a bare court.</p>
     <div id="puzzles-list" class="annals-list"></div>
     <div class="dialog-actions">
       <button class="btn ghost" id="btn-puzzles-load">Load a Shared Puzzle</button>
-      <button class="btn primary" id="btn-puzzles-close">Close</button>
+      <button class="btn ghost" id="btn-puzzles-close">Close</button>
+      <button class="btn primary" id="btn-puzzles-new">New Puzzle</button>
     </div>
   </div>
 </div>

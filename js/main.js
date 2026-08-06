@@ -325,6 +325,9 @@ function paintWinterClock() {
 
 function paintControls() {
   const interactive = !result && !aiThinking && !isTutorial();
+  $('btn-review').classList.toggle('hidden', !result || hist.length < 2 || isTutorial());
+  $('btn-return-editor').classList.toggle('hidden', !puzzleReturn || isTutorial());
+  $('btn-exit-game').classList.toggle('hidden', isTutorial());
   $('btn-undo').disabled = hist.length < 2 || aiThinking || isOnline() || isTutorial();
   $('btn-focus-undo').disabled = $('btn-undo').disabled;
   $('btn-parley').disabled = !interactive || (isOnline() && !oppHere);
@@ -370,6 +373,7 @@ function paintLog() {
 
 function onBoardClick(e) {
   if (annotating || editing || viewing) return; // annotate / edit / replay modes own the board
+  if (document.body.classList.contains('idle')) return; // the closed board is inert
   const sqEl = e.target.closest('.sq');
   if (!sqEl || result || aiThinking) return;
   if (settings.mode === 'ai' && cur().turn !== settings.humanSide) return;
@@ -579,6 +583,153 @@ function showGameOver() {
   $('btn-over-review').classList.toggle('hidden', hist.length < 2); // nothing to review without moves
   $('ov-over').classList.remove('hidden');
   $('btn-show-result').classList.add('hidden');
+}
+
+// The floating chip names the result outright — it reads as a banner, and
+// tapping it reopens the full announcement.
+function showResultChip() {
+  if (!result) return;
+  $('btn-show-result').textContent = `Result — ${result.title}`;
+  $('btn-show-result').classList.remove('hidden');
+}
+
+// ---------------------------------------------------------------------------
+// Sessions. The table holds one thing at a time — a game, a puzzle, a replay,
+// or the Primer. When nothing is open the board gives way to the court menu,
+// and every route that would replace an unsaved session asks first.
+// ---------------------------------------------------------------------------
+
+function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch { /* no storage */ }
+}
+
+// Set the game on the table down in the Annals — finished or not.
+function saveGameToAnnals() {
+  const list = getAnnals();
+  list.unshift({
+    ts: Date.now(),
+    name: (result ? result.title : 'Set aside') + ' · ' + new Date().toLocaleString(),
+    mode: settings.mode,
+    resultLabel: result ? result.label : 'Unfinished',
+    hist: hist.map(serialize),
+    log: logEntries.slice(),
+    notes: {},
+    commentary: {},
+    unfinished: !result,
+    settings: { ...settings },
+  });
+  if (list.length > ANNALS_MAX) list.length = ANNALS_MAX;
+  setAnnals(list);
+}
+
+// Close the game session entirely: the table is cleared and the save with it.
+function closeGameSession() {
+  leaveTutorial();
+  leaveOnline();
+  puzzleReturn = null; // a playtest's way back dies with the session
+  hist = [initialState()];
+  logEntries = [];
+  capturedBy = { [BONE]: [], [ASH]: [] };
+  result = null;
+  lastMove = null;
+  selection = null;
+  aiThinking = false;
+  aiOpening = null;
+  noticeText = null;
+  clearSave();
+  $('ov-over').classList.add('hidden');
+  $('btn-show-result').classList.add('hidden');
+}
+
+// The empty court: no session open, the menu standing where the board would be.
+function enterIdle() {
+  if (editing) exitEditorUi();
+  if (viewing) leaveViewingUi();
+  setAnnotating(false);
+  closeGameSession();
+  document.body.classList.add('idle');
+  flipped = false;
+  layoutBoard();
+  legalCache = genLegal(cur());
+  paintLog();
+  refreshTabBar();
+}
+
+function leaveIdle() {
+  document.body.classList.remove('idle');
+  refreshTabBar();
+}
+
+// A three-way parting: save it, let it go, or stay. onSave may be async and
+// may return false (e.g. a cancelled name prompt) to abort the departure.
+let leaveSaveFn = null;
+let leaveDiscardFn = null;
+function leaveDialog({ title, text, saveLabel = 'Save and Leave', onSave, onDiscard }) {
+  $('leave-title').textContent = title;
+  $('leave-text').textContent = text;
+  $('btn-leave-save').textContent = saveLabel;
+  leaveSaveFn = onSave;
+  leaveDiscardFn = onDiscard;
+  $('ov-leave').classList.remove('hidden');
+}
+
+// Ask before abandoning the game on the table; proceed at once if it is
+// no game at all (untouched board, a lesson, or nothing open).
+function guardGame(onProceed) {
+  if (isTutorial() || (hist.length < 2 && !result)) { onProceed(); return; }
+  leaveDialog({
+    title: result ? 'Leave This Finished Game?' : 'Leave the Game in Progress?',
+    text: result
+      ? 'Set it down in the Annals to revisit later, or let it pass into legend unrecorded.'
+      : 'Save it to the Annals and you can resume it later, move for move.',
+    onSave: () => { saveGameToAnnals(); onProceed(); },
+    onDiscard: onProceed,
+  });
+}
+
+// Ask before abandoning unsaved work in the editor.
+function guardEditor(onProceed) {
+  if (!editing || !editDirty) { onProceed(); return; }
+  leaveDialog({
+    title: 'Leave the Puzzle Editor?',
+    text: 'This position has not been saved to your library.',
+    saveLabel: 'Save and Leave…',
+    onSave: async () => { if (await savePuzzleFlow()) onProceed(); },
+    onDiscard: onProceed,
+  });
+}
+
+// Whatever is on the table, ask the right question before replacing it. A
+// puzzle playtest guards the puzzle, not the trial game played over it.
+function guardSession(onProceed) {
+  if (editing) { guardEditor(onProceed); return; }
+  if (puzzleReturn) {
+    if (!puzzleReturn.dirty) { onProceed(); return; }
+    leaveDialog({
+      title: 'Leave the Puzzle?',
+      text: 'The position you were testing has not been saved to your library.',
+      saveLabel: 'Save and Leave…',
+      onSave: async () => { if (await savePuzzleFlow(puzzleReturn.state)) onProceed(); },
+      onDiscard: onProceed,
+    });
+    return;
+  }
+  guardGame(onProceed);
+}
+
+function initLeaveDialog() {
+  const close = () => { $('ov-leave').classList.add('hidden'); };
+  $('btn-leave-stay').addEventListener('click', () => { close(); leaveSaveFn = null; leaveDiscardFn = null; });
+  $('btn-leave-discard').addEventListener('click', () => {
+    close();
+    const fn = leaveDiscardFn; leaveSaveFn = null; leaveDiscardFn = null;
+    if (fn) fn();
+  });
+  $('btn-leave-save').addEventListener('click', () => {
+    close();
+    const fn = leaveSaveFn; leaveSaveFn = null; leaveDiscardFn = null;
+    if (fn) fn();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -802,18 +953,15 @@ function load() {
 // ---------------------------------------------------------------------------
 
 function startTutorial() {
-  leaveOnline();
+  leaveIdle();
+  if (editing) exitEditorUi();
+  if (viewing) leaveViewingUi();
+  closeGameSession();
   settings = { mode: 'tutorial', humanSide: BONE, level: 'courtier' };
-  result = null;
-  aiThinking = false;
-  aiOpening = null;
-  noticeText = null;
   flipped = false;
   tut = { step: -1, snaps: [] };
   $('ov-new').classList.add('hidden');
   $('ov-rules').classList.add('hidden');
-  $('ov-over').classList.add('hidden');
-  $('btn-show-result').classList.add('hidden');
   $('tutor-card').classList.remove('hidden');
   tutAdvance();
   layoutBoard();
@@ -948,20 +1096,8 @@ function exitTutorial() {
   $('tutor-card').classList.add('hidden');
   $('chk-escapes').checked = false;
   noticeText = null;
-  // Return to whatever game was in progress before the Primer.
-  if (!load()) {
-    settings = { mode: 'hotseat', humanSide: BONE, level: 'courtier' };
-    hist = [initialState()];
-    logEntries = [];
-    capturedBy = { [BONE]: [], [ASH]: [] };
-    result = null;
-    lastMove = null;
-    flipped = false;
-  }
-  selection = null;
-  layoutBoard();
-  newGame(false);
-  if (result) $('btn-show-result').classList.remove('hidden');
+  // The Primer took the whole table; leaving it leaves the court empty.
+  enterIdle();
 }
 
 // ---------------------------------------------------------------------------
@@ -1388,7 +1524,9 @@ const PUZZLE_KEY = 'kronspiel-puzzles-v1';
 const PIECE_TYPES = [KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER];
 
 let editing = false;
+let editDirty = false;                         // unsaved changes since open/save/load
 let editState = null;                          // { board:Int8Array, turn, flucht }
+let puzzleReturn = null;                       // { state, dirty } — the puzzle behind a playtest
 let editBrush = { side: BONE, type: KRONE, erase: false };
 let editDrag = null;                           // { fromSq, sx, sy, moved, val }
 let editGhost = null;                          // the piece element riding the cursor mid-drag
@@ -1451,9 +1589,10 @@ function onEditUp(e) {
   editDrag = null;
   const b = editState.board;
   if (moved && fromSq !== toSq && b[fromSq] !== EMPTY) {
-    if (toSq !== ASCH) { b[toSq] = b[fromSq]; b[fromSq] = EMPTY; } // relocate a piece
+    if (toSq !== ASCH) { b[toSq] = b[fromSq]; b[fromSq] = EMPTY; editDirty = true; } // relocate a piece
   } else if (toSq !== ASCH) {
-    b[toSq] = editBrush.erase ? EMPTY : editBrush.type * editBrush.side; // stamp the brush
+    const v = editBrush.erase ? EMPTY : editBrush.type * editBrush.side; // stamp the brush
+    if (b[toSq] !== v) { b[toSq] = v; editDirty = true; }
   }
   editRender();
 }
@@ -1492,6 +1631,19 @@ function editRender() {
   editValidate();
 }
 
+// A position that is already over the instant play begins — the same test the
+// game runs at the start of every turn.
+function decidedNote(d) {
+  switch (d.type) {
+    case 'isolation': return `${sideName(d.loser)}’s Krone is already isolated — ${sideName(-d.loser)} prevails.`;
+    case 'mutual':    return 'Both Krone stand isolated — Mutual Ruin, a draw.';
+    case 'empty':     return 'A lone Krone against a lone Krone — the Empty Court, a draw.';
+    case 'palsy':     return `${sideName(d.loser)} has no legal move under siege — the Palsied Court.`;
+    case 'frozen':    return 'No legal move remains, yet no siege — the Frozen Court, a draw.';
+    default:          return 'This position is already decided.';
+  }
+}
+
 function editValidate() {
   const b = editState.board;
   let bk = 0, ak = 0;
@@ -1499,20 +1651,39 @@ function editValidate() {
     if (b[i] === KRONE * BONE) bk++;
     else if (b[i] === KRONE * ASH) ak++;
   }
-  const ok = bk === 1 && ak === 1;
   const st = $('ed-status');
-  if (ok) {
-    st.textContent = 'A valid position — ready to play.';
-    st.className = 'ed-status ok';
-  } else {
+
+  // A position needs exactly one Krone per side before anything else can be said.
+  if (bk !== 1 || ak !== 1) {
     const parts = [];
     if (bk !== 1) parts.push(`Bone needs one Krone (has ${bk})`);
     if (ak !== 1) parts.push(`Ash needs one Krone (has ${ak})`);
     st.textContent = parts.join(' · ');
     st.className = 'ed-status warn';
+    $('btn-ed-play').disabled = true;
+    return false;
   }
-  $('btn-ed-play').disabled = !ok;
-  return ok;
+
+  // Both Krone stand — is the game already over before the first move? Run the
+  // very test the board applies at the start of a turn.
+  const state = { board: b, turn: editState.turn, flucht: editState.flucht, clock: 0, reps: {}, ply: 0 };
+  const decided = turnStartResult(state, genLegal(state));
+  if (decided && decided.type === 'empty') {
+    // The bare board (two lone Krones) — the editor's own starting point.
+    st.textContent = 'Just the two Krones so far — add pieces to build a position.';
+    st.className = 'ed-status ok';
+  } else if (decided) {
+    st.textContent = decidedNote(decided);
+    st.className = 'ed-status note';
+  } else if (softIsolation(b, editState.turn, editState.flucht[editState.turn])) {
+    st.textContent = `${sideName(editState.turn)} is besieged — the Krone must flee at once. Ready to play.`;
+    st.className = 'ed-status note';
+  } else {
+    st.textContent = 'A valid position — ready to play.';
+    st.className = 'ed-status ok';
+  }
+  $('btn-ed-play').disabled = false; // a decided position may still be opened — it shows its verdict
+  return true;
 }
 
 function syncEditControls() {
@@ -1522,18 +1693,26 @@ function syncEditControls() {
   $('ed-flucht-ash').checked = !!editState.flucht[ASH];
 }
 
-function enterEditor(fromCurrent) {
-  if (isOnline()) { noticeText = 'Leave the online table before opening the editor.'; paintStatus(); return; }
+// The editor takes the whole table (any game was guarded and closed on the way
+// in) and opens onto a bare court: just the two Krones, facing each other.
+function enterEditor() {
+  leaveIdle();
   if (viewing) leaveViewingUi();
   setAnnotating(false);
+  closeGameSession();
   editing = true;
+  editDirty = false;
   editState = {
-    board: fromCurrent ? new Int8Array(cur().board) : new Int8Array(N * N),
-    turn: fromCurrent ? cur().turn : BONE,
-    flucht: fromCurrent
-      ? { [BONE]: cur().flucht[BONE], [ASH]: cur().flucht[ASH] }
-      : { [BONE]: true, [ASH]: true },
+    board: new Int8Array(N * N),
+    turn: BONE,
+    flucht: { [BONE]: true, [ASH]: true },
   };
+  // A Krone and a Bürger for each side — a valid, playable position from the
+  // start, rather than the two-lone-Krone Empty Court.
+  editState.board[idx(0, 5)] = KRONE * BONE;
+  editState.board[idx(1, 5)] = BURGER * BONE;
+  editState.board[idx(N - 1, 5)] = KRONE * ASH;
+  editState.board[idx(N - 2, 5)] = BURGER * ASH;
   document.body.classList.add('editing');
   $('editor-bar').classList.remove('hidden');
   $('btn-puzzle').classList.add('active');
@@ -1553,15 +1732,18 @@ function exitEditorUi() {
   closeSheet();
 }
 
-function exitEditor() {
-  exitEditorUi();
-  syncPieces(); // restore the real game's pieces and board
-  paint();
-}
-
 function playFromHere() {
   if (!editValidate()) return;
-  leaveTutorial();
+  // The puzzle is not left behind — it waits behind the playtest, and
+  // "Back to the Editor" restores it exactly as built.
+  puzzleReturn = {
+    state: {
+      board: new Int8Array(editState.board),
+      turn: editState.turn,
+      flucht: { [BONE]: editState.flucht[BONE], [ASH]: editState.flucht[ASH] },
+    },
+    dirty: editDirty,
+  };
   settings = { mode: 'hotseat', humanSide: BONE, level: 'courtier' };
   const s = {
     board: new Int8Array(editState.board),
@@ -1588,9 +1770,22 @@ function playFromHere() {
   afterPositionChange(); // runs genLegal, checks for an already-decided position, paints, saves
 }
 
+// Return from a playtest to the editor, the puzzle standing as it was built.
+function returnToEditor() {
+  const pz = puzzleReturn;
+  if (!pz) return;
+  enterEditor(); // closes the trial game (and clears puzzleReturn)
+  editState.board = new Int8Array(pz.state.board);
+  editState.turn = pz.state.turn;
+  editState.flucht = { [BONE]: pz.state.flucht[BONE], [ASH]: pz.state.flucht[ASH] };
+  editDirty = pz.dirty;
+  syncEditControls();
+  editRender();
+}
+
 // Shareable positions ---------------------------------------------------------
-const puzzlePayload = () => ({ b: Array.from(editState.board), t: editState.turn, f: [editState.flucht[BONE] ? 1 : 0, editState.flucht[ASH] ? 1 : 0] });
-function editCode() { return 'KP1:' + b64enc(JSON.stringify(puzzlePayload())); } // for the local library
+const puzzlePayload = (s = editState) => ({ b: Array.from(s.board), t: s.turn, f: [s.flucht[BONE] ? 1 : 0, s.flucht[ASH] ? 1 : 0] });
+function editCode(s = editState) { return 'KP1:' + b64enc(JSON.stringify(puzzlePayload(s))); } // for the local library
 
 // A tappable link; pass a stored KP1 code, or omit to share the current position.
 function puzzleShareUrl(kp1) {
@@ -1610,6 +1805,7 @@ function applyCode(input) {
   editState.board = Int8Array.from(o.b.map((v) => v | 0));
   editState.turn = o.t === -1 ? ASH : BONE;
   editState.flucht = { [BONE]: !!(o.f && o.f[0]), [ASH]: !!(o.f && o.f[1]) };
+  editDirty = false; // a loaded puzzle already lives somewhere
   syncEditControls();
   editRender();
 }
@@ -1621,6 +1817,33 @@ function getPuzzles() {
 function setPuzzles(list) {
   try { localStorage.setItem(PUZZLE_KEY, JSON.stringify(list)); } catch {}
 }
+// Name and save a puzzle position; false if the prompt was cancelled.
+async function savePuzzleFlow(state = editState) {
+  const name = await promptDialog({
+    title: 'Save to the Library',
+    note: 'Name this puzzle so you can find it later.',
+    placeholder: 'e.g. The Fool’s Gate',
+    ok: 'Save',
+  });
+  if (!name) return false;
+  const list = getPuzzles();
+  list.push({ name, code: editCode(state) });
+  setPuzzles(list);
+  if (state === editState) editDirty = false;
+  else if (puzzleReturn && state === puzzleReturn.state) puzzleReturn.dirty = false;
+  return true;
+}
+
+// Open a puzzle (a library entry or a pasted link) in a fresh editor, asking
+// the usual leave question about whatever is on the table first.
+function openPuzzleInEditor(code) {
+  $('ov-puzzles').classList.add('hidden');
+  guardSession(() => {
+    enterEditor();
+    try { applyCode(code); } catch { editStatusFlash('That puzzle could not be read.'); }
+  });
+}
+
 function initEditor() {
   buildPalette('palette-bone', BONE);
   buildPalette('palette-ash', ASH);
@@ -1629,8 +1852,10 @@ function initEditor() {
   boardEl.addEventListener('pointermove', onEditMove);
   boardEl.addEventListener('pointerup', onEditUp);
 
-  $('btn-puzzle').addEventListener('click', () => (editing ? exitEditor() : enterEditor(true)));
-  $('btn-ed-done').addEventListener('click', exitEditor);
+  // "Puzzle" opens the library — browsing is free; the guard waits until a
+  // puzzle is actually opened or begun.
+  $('btn-puzzle').addEventListener('click', () => { renderPuzzles(); $('ov-puzzles').classList.remove('hidden'); });
+  $('btn-ed-done').addEventListener('click', () => guardEditor(enterIdle));
   $('btn-ed-play').addEventListener('click', playFromHere);
 
   for (const b of $('editor-bar').querySelectorAll('.ed-brush')) {
@@ -1639,25 +1864,31 @@ function initEditor() {
   // Default brush: the Bone Krone (a natural first placement).
   selectBrush($('palette-bone').querySelector('.ed-pc-btn'));
 
+  // Side-to-move and the Flucht flags all change whether the position is
+  // already decided, so each re-runs validation.
   for (const btn of $('ed-turn').querySelectorAll('.seg-btn')) {
     btn.addEventListener('click', () => {
       editState.turn = btn.dataset.v === 'ash' ? ASH : BONE;
+      editDirty = true;
       syncEditControls();
+      editValidate();
     });
   }
-  $('ed-flucht-bone').addEventListener('change', (e) => { editState.flucht[BONE] = e.target.checked; });
-  $('ed-flucht-ash').addEventListener('change', (e) => { editState.flucht[ASH] = e.target.checked; });
+  $('ed-flucht-bone').addEventListener('change', (e) => { editState.flucht[BONE] = e.target.checked; editDirty = true; editValidate(); });
+  $('ed-flucht-ash').addEventListener('change', (e) => { editState.flucht[ASH] = e.target.checked; editDirty = true; editValidate(); });
 
   $('btn-ed-start').addEventListener('click', () => {
     const init = initialState();
     editState.board = new Int8Array(init.board);
     editState.turn = BONE;
     editState.flucht = { [BONE]: true, [ASH]: true };
+    editDirty = true;
     syncEditControls();
     editRender();
   });
   $('btn-ed-clear').addEventListener('click', () => {
     editState.board = new Int8Array(N * N);
+    editDirty = true;
     editRender();
   });
 
@@ -1666,28 +1897,19 @@ function initEditor() {
     catch { editStatusFlash('Copying failed — the browser withheld the clipboard.'); }
   });
   $('btn-ed-save').addEventListener('click', async () => {
-    const name = await promptDialog({
-      title: 'Save to the Library',
-      note: 'Name this puzzle so you can find it later.',
-      placeholder: 'e.g. The Fool’s Gate',
-      ok: 'Save',
-    });
-    if (!name) return;
-    const list = getPuzzles();
-    list.push({ name, code: editCode() });
-    setPuzzles(list);
-    editStatusFlash('Saved to your puzzle library.');
+    if (await savePuzzleFlow()) editStatusFlash('Saved to your puzzle library.');
   });
-  $('btn-ed-library').addEventListener('click', () => { renderPuzzles(); $('ov-puzzles').classList.remove('hidden'); });
-
-  // Puzzle library modal
+  // The Puzzle Library modal
   $('btn-puzzles-close').addEventListener('click', () => $('ov-puzzles').classList.add('hidden'));
   $('ov-puzzles').addEventListener('click', (e) => { if (e.target === $('ov-puzzles')) $('ov-puzzles').classList.add('hidden'); });
+  $('btn-puzzles-new').addEventListener('click', () => {
+    $('ov-puzzles').classList.add('hidden');
+    guardSession(enterEditor);
+  });
   $('btn-puzzles-load').addEventListener('click', async () => {
     const code = await promptDialog({ title: 'Load a Shared Puzzle', note: 'Paste a Kronspiel puzzle link.', placeholder: 'https://…?p=…', ok: 'Load' });
     if (!code) return;
-    if (!editing) enterEditor(false);
-    try { applyCode(code); $('ov-puzzles').classList.add('hidden'); } catch { editStatusFlash('That link could not be read.'); }
+    openPuzzleInEditor(code);
   });
   $('puzzles-list').addEventListener('click', (e) => {
     const open = e.target.closest('.annals-open');
@@ -1695,10 +1917,7 @@ function initEditor() {
     const del = e.target.closest('.annals-del');
     if (open) {
       const pz = getPuzzles()[+open.dataset.i];
-      if (pz) {
-        if (!editing) enterEditor(false);
-        try { applyCode(pz.code); $('ov-puzzles').classList.add('hidden'); } catch { editStatusFlash('That saved puzzle could not be read.'); }
-      }
+      if (pz) openPuzzleInEditor(pz.code);
     } else if (copy) {
       const pz = getPuzzles()[+copy.dataset.i];
       if (pz) navigator.clipboard?.writeText(puzzleShareUrl(pz.code)).then(() => flashButton(copy, '✓'), () => {});
@@ -1714,7 +1933,7 @@ function initEditor() {
 function renderPuzzles() {
   const list = getPuzzles();
   const el = $('puzzles-list');
-  if (!list.length) { el.innerHTML = '<div class="annals-empty">No saved puzzles yet. Build a position and press Save.</div>'; return; }
+  if (!list.length) { el.innerHTML = '<div class="annals-empty">No saved puzzles yet. Press New Puzzle to begin building.</div>'; return; }
   el.innerHTML = list.map((pz, i) =>
     `<div class="annals-row">
       <button class="annals-open" data-i="${i}"><span class="an-name">${escXml(pz.name)}</span><span class="an-sub">Open in the editor</span></button>
@@ -1786,10 +2005,11 @@ function renderAnnals() {
   el.innerHTML = list.map((g, i) => {
     const when = new Date(g.ts).toLocaleString();
     const plies = Math.max(0, (g.hist?.length || 1) - 1);
+    const label = g.unfinished ? 'Unfinished — open to resume playing' : g.resultLabel;
     return `<div class="annals-row">
       <button class="annals-open" data-i="${i}">
         <span class="an-name">${escXml(g.name)}</span>
-        <span class="an-sub">${escXml(g.resultLabel)} · ${plies} plies · ${escXml(when)}</span>
+        <span class="an-sub">${escXml(label)} · ${plies} plies · ${escXml(when)}</span>
       </button>
       <button class="annals-copy" data-i="${i}" title="Copy a share link">⧉</button>
       <button class="annals-del" data-i="${i}" title="Delete">✕</button>
@@ -1811,8 +2031,10 @@ function annalsShareUrl(g) {
 
 function startReplay(cfg) {
   stopAutoplay();
+  leaveIdle();
   if (editing) exitEditorUi();
   setAnnotating(false);
+  if (!cfg.postGame) closeGameSession(); // one thing on the table at a time
   viewing = true;
   replay = {
     postGame: !!cfg.postGame,      // the game that just ended (offers New Game)
@@ -1826,13 +2048,18 @@ function startReplay(cfg) {
     notes: cfg.notes ? JSON.parse(JSON.stringify(cfg.notes)) : {},
     commentary: cfg.commentary ? { ...cfg.commentary } : {},
     step: cfg.startAtEnd ? cfg.states.length - 1 : 0,
+    unfinished: !!cfg.unfinished,        // a set-aside game — offer to resume it
+    settings: cfg.settings || null,      // how it was being played, for the resume
   };
   document.body.classList.add('viewing');
   $('replay-bar').classList.remove('hidden');
   $('btn-show-result').classList.add('hidden');
   $('replay-name').textContent = cfg.resultLabel || '';
   $('replay-name-input').value = cfg.name || '';
-  $('btn-rp-newgame').classList.toggle('hidden', !replay.postGame);
+  $('btn-rp-resume').classList.toggle('hidden', !replay.unfinished);
+  // A post-game review sits over the game still on the table, so its exit
+  // returns there; any other replay is its own session, and leaves it.
+  $('btn-rp-exit').textContent = replay.postGame ? 'Back to the Board' : 'Leave the Table';
   refreshSaveButton();
   selection = null;
   loadStepAnno(replay.step);
@@ -1852,6 +2079,9 @@ function openReplayFromEntry(entry) {
     log: entry.log,
     notes: entry.notes,
     commentary: entry.commentary,
+    unfinished: !!entry.unfinished,
+    settings: entry.settings || null,
+    startAtEnd: !!entry.unfinished, // a set-aside game opens where it left off
   });
 }
 
@@ -1884,12 +2114,59 @@ function leaveViewingUi() {
   closeSheet();
 }
 
+// Close Replay: a post-game review returns to the finished game's board;
+// any other replay leaves the table empty.
 function exitReplay() {
   const wasPostGame = replay?.postGame;
   leaveViewingUi();
-  syncPieces();
-  paint();
-  if (wasPostGame && result) $('btn-show-result').classList.remove('hidden');
+  if (wasPostGame) {
+    syncPieces();
+    paint();
+    if (result) showResultChip();
+  } else {
+    enterIdle();
+  }
+}
+
+// Take a set-aside game back onto the board and keep playing it — from the
+// position currently shown, so resuming mid-replay simply forks from there.
+function resumePlayingFromReplay() {
+  if (!replay) return;
+  const step = replay.step;
+  const atEnd = step === replay.states.length - 1;
+  const entryTs = replay.entryTs;
+  const wasUnfinished = replay.unfinished;
+  const rs = replay.settings;
+  const states = replay.states.slice(0, step + 1).map((s) => deserialize(serialize(s))); // detached copies
+  const log = replay.log.slice(0, step);
+  const lm = step > 0 ? { ...replay.moves[step - 1] } : null;
+  leaveViewingUi();
+  leaveOnline();
+  settings = rs && rs.mode === 'ai'
+    ? {
+        mode: 'ai',
+        humanSide: rs.humanSide === ASH ? ASH : BONE,
+        level: ['novice', 'courtier', 'spymaster'].includes(rs.level) ? rs.level : 'courtier',
+      }
+    : { mode: 'hotseat', humanSide: BONE, level: 'courtier' };
+  hist = states;
+  logEntries = log;
+  rebuildCaptured();
+  result = null;
+  lastMove = lm;
+  selection = null;
+  aiThinking = false;
+  aiOpening = null;
+  noticeText = null;
+  // A stash resumed in full has served its purpose; a mid-way fork keeps it.
+  if (wasUnfinished && atEnd && entryTs) {
+    setAnnals(getAnnals().filter((x) => x.ts !== entryTs));
+  }
+  $('ov-over').classList.add('hidden');
+  $('btn-show-result').classList.add('hidden');
+  flipped = settings.mode === 'ai' && settings.humanSide === ASH;
+  layoutBoard();
+  afterPositionChange();
 }
 
 function stashStepAnno() {
@@ -2035,7 +2312,7 @@ function saveReplay() {
     if (list.length > ANNALS_MAX) list.length = ANNALS_MAX;
     replay.entryTs = entry.ts;
     replay.postGame = false; // it now lives in the annals
-    $('btn-rp-newgame').classList.add('hidden');
+    $('btn-rp-exit').textContent = 'Leave the Table'; // no game to return to now
   }
   setAnnals(list);
   refreshSaveButton();
@@ -2118,7 +2395,7 @@ async function loadSharedReplay() {
     const cfg = replayFromShareCode(code);
     if (!cfg.states.length) throw new Error('bad');
     $('ov-annals').classList.add('hidden');
-    startReplay(cfg);
+    guardSession(() => startReplay(cfg));
   } catch {
     renderAnnals();
     $('annals-list').insertAdjacentHTML('afterbegin', '<div class="annals-empty">That replay link could not be read.</div>');
@@ -2144,7 +2421,10 @@ function initAnnals() {
     const del = e.target.closest('.annals-del');
     if (open) {
       const entry = getAnnals()[+open.dataset.i];
-      if (entry) { $('ov-annals').classList.add('hidden'); openReplayFromEntry(entry); }
+      if (entry) {
+        $('ov-annals').classList.add('hidden');
+        guardSession(() => openReplayFromEntry(entry));
+      }
     } else if (copy) {
       const g = getAnnals()[+copy.dataset.i];
       if (g) navigator.clipboard?.writeText(annalsShareUrl(g)).then(() => flashButton(copy, '✓'), () => {});
@@ -2162,9 +2442,9 @@ function initAnnals() {
   $('btn-rp-last').addEventListener('click', () => { stopAutoplay(); replayGoto(replay.states.length - 1); });
   $('btn-rp-play').addEventListener('click', toggleAutoplay);
   $('btn-rp-annotate').addEventListener('click', () => setAnnotating(!annotating));
+  $('btn-rp-resume').addEventListener('click', resumePlayingFromReplay);
   $('btn-rp-save').addEventListener('click', saveReplay);
   $('btn-rp-share').addEventListener('click', shareReplay);
-  $('btn-rp-newgame').addEventListener('click', () => { exitReplay(); $('btn-show-result').classList.add('hidden'); $('ov-new').classList.remove('hidden'); });
   $('btn-rp-exit').addEventListener('click', exitReplay);
   $('replay-commentary').addEventListener('input', stashCommentary);
 
@@ -2191,10 +2471,10 @@ let openSheetName = null;
 // The tabs offered depend on context: a live game, the editor, or a replay.
 function mobileTabs() {
   if (editing) return [['editor', '✦', 'Editor']];
-  if (viewing) return [['replay', '⏵', 'Replay'], ['annotate', '✎', 'Draw']];
+  if (viewing) return [['replay', '⏵', 'Replay'], ['annotate', '✎', 'Annotate']];
   const tabs = [['controls', '⚔', 'Controls'], ['chronicle', '❦', 'Chronicle']];
   if (isOnline()) tabs.push(['chat', '✉', 'Parlour']);
-  tabs.push(['annotate', '✎', 'Draw']);
+  tabs.push(['annotate', '✎', 'Annotate']);
   return tabs;
 }
 
@@ -2240,6 +2520,19 @@ function initMobileShell() {
   });
 
   refreshTabBar();
+}
+
+// ---------------------------------------------------------------------------
+// The court menu — the empty table's menu, standing where the board would be.
+// ---------------------------------------------------------------------------
+
+function initCourtMenu() {
+  $('cm-new').addEventListener('click', () => $('ov-new').classList.remove('hidden'));
+  $('cm-rules').addEventListener('click', () => $('ov-rules').classList.remove('hidden'));
+  $('cm-puzzle').addEventListener('click', () => { renderPuzzles(); $('ov-puzzles').classList.remove('hidden'); });
+  $('cm-annals').addEventListener('click', () => { renderAnnals(); $('ov-annals').classList.remove('hidden'); });
+  $('cm-options').addEventListener('click', () => $('btn-options').click());
+  $('cm-primer').addEventListener('click', startTutorial);
 }
 
 // ---------------------------------------------------------------------------
@@ -2626,32 +2919,32 @@ function wireUi() {
   $('btn-new').addEventListener('click', () => $('ov-new').classList.remove('hidden'));
   $('btn-new-cancel').addEventListener('click', () => $('ov-new').classList.add('hidden'));
   $('btn-new-start').addEventListener('click', () => {
-    leaveTutorial();
     const mode = segValue('seg-mode');
     // "Online" now lives under Two Players → Where: Local / Online.
-    if (mode === 'hotseat' && segValue('seg-where') === 'online') {
-      if (segValue('seg-net-role') === 'join') {
-        const code = normalizeCode($('join-code').value);
-        if (!code) { $('join-code').focus(); return; }
-        $('ov-new').classList.add('hidden');
-        startJoin(code);
-      } else {
-        $('ov-new').classList.add('hidden');
-        startHost(segValue('seg-host-side') === 'bone' ? BONE : ASH);
+    const online = mode === 'hotseat' && segValue('seg-where') === 'online';
+    const joining = online && segValue('seg-net-role') === 'join';
+    const code = joining ? normalizeCode($('join-code').value) : null;
+    if (joining && !code) { $('join-code').focus(); return; }
+    guardSession(() => {
+      leaveIdle();
+      if (editing) exitEditorUi();
+      if (viewing) leaveViewingUi();
+      closeGameSession();
+      $('ov-new').classList.add('hidden');
+      if (online) {
+        if (joining) startJoin(code);
+        else startHost(segValue('seg-host-side') === 'bone' ? BONE : ASH);
+        return;
       }
-      return;
-    }
-    leaveOnline();
-    settings = {
-      mode,
-      humanSide: segValue('seg-side') === 'bone' ? BONE : ASH,
-      level: segValue('seg-level'),
-    };
-    $('ov-new').classList.add('hidden');
-    $('ov-over').classList.add('hidden');
-    flipped = settings.mode === 'ai' && settings.humanSide === ASH;
-    newGame(true);
-    layoutBoard();
+      settings = {
+        mode,
+        humanSide: segValue('seg-side') === 'bone' ? BONE : ASH,
+        level: segValue('seg-level'),
+      };
+      flipped = settings.mode === 'ai' && settings.humanSide === ASH;
+      newGame(true);
+      layoutBoard();
+    });
   });
   const newDlg = $('ov-new').querySelector('.dialog');
   const syncOnlineFields = () => {
@@ -2708,8 +3001,8 @@ function wireUi() {
   $('btn-rules-close').addEventListener('click', () => $('ov-rules').classList.add('hidden'));
 
   // The Primer
-  $('btn-primer-rules').addEventListener('click', startTutorial);
-  $('btn-primer-new').addEventListener('click', startTutorial);
+  $('btn-primer-rules').addEventListener('click', () => guardSession(startTutorial));
+  $('btn-primer-new').addEventListener('click', () => guardSession(startTutorial));
   $('btn-tutor-next').addEventListener('click', () => { if (tut) tutAdvance(); });
   $('btn-tutor-back').addEventListener('click', () => { if (tut) tutBack(); });
   $('btn-tutor-exit').addEventListener('click', () => { if (tut) exitTutorial(); });
@@ -2753,11 +3046,14 @@ function wireUi() {
   $('btn-prompt-cancel').addEventListener('click', () => closePrompt(null));
   $('ov-prompt').addEventListener('click', (e) => { if (e.target === $('ov-prompt')) closePrompt(null); });
 
-  $('btn-over-new').addEventListener('click', () => {
+  $('btn-over-ok').addEventListener('click', () => {
     $('ov-over').classList.add('hidden');
-    $('ov-new').classList.remove('hidden');
+    showResultChip();
   });
   $('btn-show-result').addEventListener('click', showGameOver);
+  $('btn-review').addEventListener('click', openPostGameReview);
+  $('btn-return-editor').addEventListener('click', returnToEditor);
+  $('btn-exit-game').addEventListener('click', () => guardSession(enterIdle));
 
   $('btn-undo').addEventListener('click', undo);
   $('btn-flip').addEventListener('click', () => { flipped = !flipped; selection = null; layoutBoard(); save(); });
@@ -2798,6 +3094,8 @@ function wireUi() {
   initEditor();
   initAnnals();
   initMobileShell();
+  initCourtMenu();
+  initLeaveDialog();
 }
 
 // ---------------------------------------------------------------------------
@@ -2814,18 +3112,28 @@ if (!restored) {
 buildBoard();
 paintRuleIcons();
 newGame(false);
-if (result) {
-  $('btn-show-result').classList.remove('hidden');
-}
+if (result) showResultChip();
 
-// Shared links open straight into the game.
+// Shared links open straight into their content — after the usual leave-ask if
+// a game is still open. An ordinary arrival with no game open finds the court
+// menu standing where the board would be.
 const bootParams = new URLSearchParams(location.search);
 const joinParam = bootParams.get('join');
 if (joinParam && normalizeCode(joinParam)) {
   history.replaceState(null, '', location.pathname);
-  startJoin(normalizeCode(joinParam));
+  guardGame(() => startJoin(normalizeCode(joinParam)));
 } else if (bootParams.get('g')) {
-  try { startReplay(replayFromShareCode(bootParams.get('g'))); history.replaceState(null, '', location.pathname); } catch { /* bad link */ }
+  try {
+    const cfg = replayFromShareCode(bootParams.get('g'));
+    history.replaceState(null, '', location.pathname);
+    guardGame(() => startReplay(cfg));
+  } catch { /* bad link */ }
 } else if (bootParams.get('p')) {
-  try { enterEditor(false); applyCode(bootParams.get('p')); history.replaceState(null, '', location.pathname); } catch { /* bad link */ }
+  const p = bootParams.get('p');
+  history.replaceState(null, '', location.pathname);
+  guardGame(() => {
+    try { enterEditor(); applyCode(p); } catch { enterIdle(); /* bad link */ }
+  });
+} else if (!restored || hist.length < 2) {
+  enterIdle();
 }
