@@ -106,6 +106,7 @@
       <div id="court-menu" class="court-menu log-card" aria-label="Main menu">
         <div class="cm-head">The Court Awaits</div>
         <p class="cm-sub">The board stands ready. Choose your entrance.</p>
+        <p class="cm-firsttime">New here? Learn by playing — begin with <strong>The Primer</strong>.</p>
         <div class="cm-tiles">
           <button class="hall-tile primary" id="cm-new">
             <span class="ht-ico">⚔</span>
@@ -146,8 +147,8 @@
       </div>
 
       <div class="status-card">
-        <div id="status" class="status">The Bone Court to move.</div>
-        <div id="substatus" class="substatus"></div>
+        <div id="status" class="status" role="status" aria-live="polite">The Bone Court to move.</div>
+        <div id="substatus" class="substatus" aria-live="polite"></div>
         <div id="winter-clock" class="winter-clock hidden"></div>
       </div>
 
@@ -291,8 +292,8 @@
   </div>
 
   <footer class="colophon">
-    <p>“You need not kill a king to finish him. You need only see that he has nowhere left to stand.”</p>
-    <p class="attribution">— Knight-Captain Sigismund von Höthbacher, <em>Ordo Theoderici Cohortis Niger</em></p>
+    <p id="colophon-quote">“You need not kill a king to finish him. You need only see that he has nowhere left to stand.”</p>
+    <p class="attribution" id="colophon-cite">— Knight-Captain Sigismund von Höthbacher, <em>Ordo Theoderici Cohortis Niger</em></p>
   </footer>
 </div>
 
@@ -435,6 +436,13 @@
         <button data-v="hide" class="seg-btn">Hide — larger board</button>
       </div>
     </div>
+    <div class="field">
+      <span class="field-label">Sound &amp; haptics</span>
+      <div class="seg" id="seg-sound">
+        <button data-v="on" class="seg-btn active">On</button>
+        <button data-v="off" class="seg-btn">Off</button>
+      </div>
+    </div>
     <div class="dialog-actions">
       <button class="btn primary" id="btn-options-close">Close</button>
     </div>
@@ -524,6 +532,10 @@
 <button class="btn result-chip hidden" id="btn-show-result">Show Result</button>
 <button class="focus-btn" id="btn-focus" title="Full-screen view" aria-label="Toggle full-screen view">⛶</button>
 <button class="focus-btn unavailable" id="btn-focus-chat" title="The Parlour" aria-label="Toggle chat">✉<span id="chat-unread" class="chat-unread hidden"></span></button>
+
+<!-- Full-screen effect layers: peril vignette + the endgame flare -->
+<div id="fx-peril" class="fx-overlay" aria-hidden="true"></div>
+<div id="fx-endgame" class="fx-overlay" aria-hidden="true"></div>
 
 <script src="js/vendor/peerjs.min.js"></script>
 <script type="module" src="js/main.js"></script>
