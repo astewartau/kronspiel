@@ -570,6 +570,13 @@ h1 {
   50% { box-shadow: inset 0 0 0 3px rgba(208, 106, 74, 0.75); }
 }
 
+/* Soft Isolation — the Krone besieged and bound to flee (Die Flucht or fall) */
+.sq.krone-flee { animation: fleepulse 1.3s ease-in-out infinite; z-index: 3; }
+@keyframes fleepulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px rgba(200, 162, 74, 0.6); }
+  50% { box-shadow: inset 0 0 0 5px var(--gold-bright), inset 0 0 26px rgba(232, 201, 106, 0.55); }
+}
+
 /* ---------- pieces ---------- */
 
 .pieces-layer, .marks-layer {

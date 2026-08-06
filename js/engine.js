@@ -168,16 +168,18 @@ export function genPseudo(board, side, fluchtAvail) {
         if (board[t] === EMPTY) moves.push({ from, to: t });
       }
       if (fluchtAvail) {
-        // Path threats are judged with the Krone lifted (§6): he cannot
-        // shelter the road behind his own body.
+        // §6: the Krone may leap up to three squares in a straight orthogonal
+        // line, over any threatened ground, so long as the path is empty and the
+        // LANDING is empty and unthreatened. Threats are judged with the Krone
+        // lifted — he cannot shelter the road behind his own body.
         board[from] = EMPTY;
         for (const [dr, dc] of ORTH) {
           for (let d = 1; d <= 3; d++) {
             const rr = r + dr * d, cc = c + dc * d;
             if (!onBoard(rr, cc)) break;
             const t = idx(rr, cc);
-            if (t === ASCH || board[t] !== EMPTY || attacked(board, t, -side)) break;
-            if (d >= 2) moves.push({ from, to: t, flucht: true });
+            if (t === ASCH || board[t] !== EMPTY) break; // occupancy/edge blocks the road
+            if (d >= 2 && !attacked(board, t, -side)) moves.push({ from, to: t, flucht: true });
           }
         }
         board[from] = p;
@@ -286,9 +288,19 @@ export function unmake(board, m, u) {
   board[m.to] = u.captured;
 }
 
+// Soft Isolation (§6): a Krone who would be Isolated but for his unused Die
+// Flucht is not lost — yet on his turn he *must* flee. The one exception to
+// "no reaction time": the Crown quits the capitol rather than fall in it.
+export function softIsolation(board, side, fluchtAvail) {
+  if (!fluchtAvail) return false;
+  if (!isolationInfo(board, side, false).isolated) return false; // not besieged (ignoring Flucht)
+  return !isolationInfo(board, side, true).isolated;             // ...but Die Flucht rescues him
+}
+
 // Full legality for the side to move in `state`:
 //  - a Krone may never end its move on a threatened square
 //  - no move may leave the mover's own Krone isolated (§6 safeguard)
+//  - under Soft Isolation, only the Krone's Flucht leaps are legal
 export function genLegal(state) {
   const { board, turn, flucht } = state;
   const pseudo = genPseudo(board, turn, flucht[turn]);
@@ -305,6 +317,8 @@ export function genLegal(state) {
     unmake(board, m, u);
     if (ok) legal.push(m);
   }
+  // Soft Isolation compels the flight — nothing else may be played this turn.
+  if (softIsolation(board, turn, flucht[turn])) return legal.filter((m) => m.flucht);
   return legal;
 }
 
