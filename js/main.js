@@ -4,7 +4,7 @@ import {
   N, ASCH, EMPTY, KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER, BONE, ASH,
   idx, rowOf, colOf, sqName, GLYPHS,
   initialState, genPseudo, genLegal, apply, make, attacked, turnStartResult,
-  claimableDraws, isolationInfo, notateBody, serialize, deserialize, positionKey,
+  claimableDraws, isolationInfo, softIsolation, findKrone, notateBody, serialize, deserialize, positionKey,
 } from './engine.js';
 import { findBestMove, quickEval, OPENINGS } from './ai.js';
 import { PIECE_SETS, pieceHTML, sigilInner } from './pieces.js';
@@ -46,6 +46,8 @@ const sideName = (s) => (s === BONE ? 'The Bone Court' : 'The Ash Court');
 const isAiTurn = () => settings.mode === 'ai' && !result && cur().turn === -settings.humanSide;
 const isOnline = () => settings.mode === 'online';
 const isTutorial = () => settings.mode === 'tutorial';
+// Soft Isolation: the side to move is besieged and must take Die Flucht this turn.
+const softFlee = () => !result && !isTutorial() && softIsolation(cur().board, cur().turn, cur().flucht[cur().turn]);
 
 // ---------------------------------------------------------------------------
 // Board DOM
@@ -175,7 +177,7 @@ function paint() {
   for (const el of squares) {
     const sq = +el.dataset.sq;
     el.classList.remove('sel', 'move', 'capture', 'flucht-target', 'last-from', 'last-to',
-      'esc-open', 'esc-enemy', 'esc-own', 'doom-enemy', 'doom-own', 'doom-krone', 'krone-warn', 'tut-mark');
+      'esc-open', 'esc-enemy', 'esc-own', 'doom-enemy', 'doom-own', 'doom-krone', 'krone-warn', 'krone-flee', 'tut-mark');
     if (tutMarks && tutMarks.has(sq)) el.classList.add('tut-mark');
     if (lastMove) {
       if (sq === lastMove.from) el.classList.add('last-from');
@@ -205,6 +207,12 @@ function paint() {
   if (warnInfo && warnInfo.open.length <= 1 && warnInfo.enemyTouch && !doom) {
     const el = squares.find((s) => +s.dataset.sq === warnInfo.kSq);
     if (el) el.classList.add('krone-warn');
+  }
+
+  // Soft Isolation: mark the Krone who must flee this turn.
+  if (softFlee()) {
+    const el = squares.find((s) => +s.dataset.sq === findKrone(state.board, state.turn));
+    if (el) { el.classList.remove('krone-warn'); el.classList.add('krone-flee'); }
   }
 
   paintTutArrows();
@@ -281,6 +289,13 @@ function paintStatus() {
   }
   st.textContent = `${sideName(state.turn)} to move.`;
   fs.textContent = st.textContent;
+  if (softFlee()) {
+    st.textContent = `${sideName(state.turn)} — the Krone must flee!`;
+    fs.textContent = st.textContent;
+    sub.textContent = noticeText
+      || 'Besieged on every side and saved only by Die Flucht — the Krone must take his one leap now.';
+    return;
+  }
   if (noticeText) {
     sub.textContent = noticeText;
     return;
@@ -479,6 +494,9 @@ function afterPositionChange() {
     const end = turnStartResult(state, legalCache);
     if (end) setResult(end);
   }
+
+  // Soft Isolation: pre-select the Krone so his forced Flucht squares are shown.
+  if (!result && softFlee() && !isAiTurn()) selection = findKrone(state.board, state.turn);
 
   paint();
   paintLog();

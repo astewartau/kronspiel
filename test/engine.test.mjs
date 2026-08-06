@@ -2,7 +2,7 @@
 import {
   N, ASCH, EMPTY, KRONE, KANZLER, MARSCHALL, PRALAT, GESANDTER, BURGER,
   BONE, ASH, idx, colOf,
-  initialState, genPseudo, genLegal, apply, attacked, isolationInfo,
+  initialState, genPseudo, genLegal, apply, attacked, isolationInfo, softIsolation,
   turnStartResult, claimableDraws, positionKey, serialize, deserialize, notateBody,
 } from '../js/engine.js';
 import { findBestMove, OPENINGS } from '../js/ai.js';
@@ -122,11 +122,17 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
   ok(fm.some(m => m.to === idx(0, 3)) && fm.some(m => m.to === idx(0, 2)), 'Flucht: 2 or 3 leftward');
   ok(!fm.some(m => m.to === idx(1, 6)), 'Flucht is orthogonal only');
 
-  // threatened path blocks Flucht
+  // §6: Flucht may vault OVER a threatened square; only the landing must be safe.
   const b2 = new Int8Array(b);
-  b2[idx(1, 0)] = MARSCHALL * ASH; // controls row 2 -> square f2 threatened
+  b2[idx(1, 0)] = MARSCHALL * ASH; // a2: controls rank 2 -> the pass-through f2 is threatened
   const fm2 = genPseudo(b2, BONE, true).filter(m => m.flucht && m.from === idx(0, 5));
-  ok(!fm2.some(m => m.to === idx(2, 5)), 'Flucht blocked by a threatened pass-through square');
+  ok(fm2.some(m => m.to === idx(2, 5)), 'Flucht vaults a threatened pass-through to a safe landing');
+  // ...but a threatened LANDING is refused — he may only leap past it to safe ground
+  const b3 = new Int8Array(b);
+  b3[idx(2, 0)] = MARSCHALL * ASH; // a3: controls rank 3 -> the landing f3 is threatened
+  const fm3 = genPseudo(b3, BONE, true).filter(m => m.flucht && m.from === idx(0, 5));
+  ok(!fm3.some(m => m.to === idx(2, 5)) && fm3.some(m => m.to === idx(3, 5)),
+    'a threatened landing is refused; the Krone leaps past it to safe f4');
 
   // once the Krone moves, no flucht rights
   const st = state(b, BONE, { [BONE]: true, [ASH]: true });
@@ -210,22 +216,27 @@ function state(board, turn = BONE, flucht = { [BONE]: false, [ASH]: false }) {
   const info3g = isolationInfo(b3g, BONE, false, true);
   ok(info3g.isolated && info3g.enemyTouch, 'direct threat on the Krone’s own square completes Isolation');
 
-  // Flucht as the last escape: a1 Krone, own pawns a2/b2, enemy Prälat on d3
-  // threatening b1. Without Flucht: every neighbour closed, enemy touch on b1
-  // → isolated. With Flucht: row 1 is physically clear, so c1/d1 count as
-  // escape squares (§6) even though b1, the pass-through, is threatened.
+  // Soft Isolation (§6): a Krone spared from Isolation ONLY by his unused Die
+  // Flucht is not lost — but he must flee. a1 Krone, own pawns a2/b2, an Ash
+  // Prälat on d3 threatening b1, his one empty neighbour.
   const b4 = emptyBoard();
   b4[idx(0, 0)] = KRONE * BONE;
   b4[idx(1, 0)] = BURGER * BONE;
   b4[idx(1, 1)] = BURGER * BONE;
   b4[idx(2, 3)] = PRALAT * ASH;   // d3: threatens c2 and b1
   b4[idx(10, 10)] = KRONE * ASH;
-  const noFlucht = isolationInfo(b4, BONE, false, true);
-  const withFlucht = isolationInfo(b4, BONE, true, true);
-  ok(noFlucht.isolated, 'without Flucht: isolated');
-  ok(!withFlucht.isolated, 'an unused Flucht can be the last escape');
-  ok(withFlucht.open.includes(idx(0, 2)) && withFlucht.open.includes(idx(0, 3)),
-    'Flucht squares counted despite the threatened pass-through');
+  ok(isolationInfo(b4, BONE, false, true).isolated, 'besieged without Flucht: hard-isolated');
+  ok(!isolationInfo(b4, BONE, true, true).isolated, 'his unused Flucht rescues him');
+  ok(softIsolation(b4, BONE, true), 'that is Soft Isolation');
+  ok(!softIsolation(b4, BONE, false), 'no Flucht rights → not soft, simply isolated');
+  const st4 = state(b4, BONE, { [BONE]: true, [ASH]: true });
+  const legal4 = genLegal(st4);
+  ok(legal4.length > 0 && legal4.every(m => m.flucht && m.from === idx(0, 0)),
+    'Soft Isolation compels the flight: only Krone Flucht leaps are legal');
+  ok(turnStartResult(st4, legal4) === null, 'Soft Isolation is not itself a defeat');
+  // once the Krone has spent his Flucht, the same siege is a true Isolation
+  const st4b = state(b4, BONE, { [BONE]: false, [ASH]: true });
+  ok(turnStartResult(st4b, genLegal(st4b))?.type === 'isolation', 'no Flucht left: the siege falls');
 
   // turn-start detection
   const st = state(b, BONE);

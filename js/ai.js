@@ -117,10 +117,15 @@ export function findBestMove(state, level, rng = Math.random, planMove = null) {
     }
     if (depth === 0) return evaluate(board, side, fMine, fTheirs);
 
+    // Soft Isolation (§6): saved from Isolation only by Die Flucht (we passed the
+    // check above), the Krone must flee — nothing else is legal this turn.
+    const forcedFlee = fMine && iso.enemyTouch && isolationInfo(board, side, false).isolated;
+
     const moves = orderMoves(board, genPseudo(board, side, fMine));
     let best = -Infinity;
     let anyLegal = false;
     for (const m of moves) {
+      if (forcedFlee && !m.flucht) continue;
       const u = make(board, m);
       const movedKrone = Math.abs(u.piece) === KRONE;
       const fMineAfter = fMine && !movedKrone;
@@ -141,9 +146,13 @@ export function findBestMove(state, level, rng = Math.random, planMove = null) {
   }
 
   // Root
+  const rootIso = isolationInfo(board, state.turn, flucht[state.turn]);
+  const rootFlee = flucht[state.turn] && rootIso.enemyTouch && !rootIso.isolated
+    && isolationInfo(board, state.turn, false).isolated;
   const rootMoves = orderMoves(board, genPseudo(board, state.turn, flucht[state.turn]));
   const legalRoot = [];
   for (const m of rootMoves) {
+    if (rootFlee && !m.flucht) continue;
     const u = make(board, m);
     const movedKrone = Math.abs(u.piece) === KRONE;
     const fAfter = flucht[state.turn] && !movedKrone;
