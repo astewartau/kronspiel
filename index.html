@@ -169,6 +169,33 @@
   .lg-enemy { color: #1b1610; text-shadow: 0 0 2px rgba(243,236,220,0.8); }
   .lg-x { color: #e0654a; } .lg-open { color: #8fbf77; }
 
+  /* the diagrams breathe: the safe door glows, the shut doors flicker, and the
+     doomed Krone smoulders — teaching the rule at a glance */
+  @keyframes iso-breathe {
+    0%, 100% { box-shadow: inset 0 0 0 3px rgba(111,158,95,0.85); }
+    50% { box-shadow: inset 0 0 0 3px rgba(111,158,95,1), 0 0 15px rgba(111,158,95,0.55); }
+  }
+  .iso-board .open { animation: iso-breathe 2.6s ease-in-out infinite; }
+  @keyframes iso-x { 0%, 100% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.12); } }
+  .iso.doomed .threat::after { animation: iso-x 2.2s ease-in-out infinite; }
+  .iso.doomed .threat:nth-child(2)::after { animation-delay: 0.25s; }
+  .iso.doomed .threat:nth-child(4)::after { animation-delay: 0.5s; }
+  .iso.doomed .threat:nth-child(9)::after { animation-delay: 0.75s; }
+  @keyframes iso-doom {
+    0%, 100% { text-shadow: 0 0 3px #000, 0 0 9px rgba(184,68,47,0.55), 0 1px 2px #000; }
+    50% { text-shadow: 0 0 3px #000, 0 0 18px rgba(184,68,47,0.95), 0 1px 2px #000; }
+  }
+  .iso.doomed .krone { animation: iso-doom 2.2s ease-in-out infinite; }
+
+  /* scroll-reveal — sections rise gently into view */
+  .reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .iso-board .open, .iso.doomed .threat::after, .iso.doomed .krone { animation: none; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
+
   /* ---------- full rules ---------- */
   .full-rules {
     margin: 30px auto 0; max-width: 780px;
@@ -430,5 +457,24 @@
     <p class="attribution">— Knight-Captain Sigismund von Höthbacher, <em>Ordo Theoderici Cohortis Niger</em></p>
   </footer>
 </main>
+<script>
+  // Scroll-reveal: mark eligible blocks, then reveal them as they enter view.
+  (function () {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const targets = document.querySelectorAll(
+      '.section-head, .feature, .iso, .iso-legend, .full-rules, .workshop > *, .hero > *');
+    if (reduce || !('IntersectionObserver' in window)) {
+      targets.forEach((el) => el.classList.add('in'));
+      return;
+    }
+    targets.forEach((el) => el.classList.add('reveal'));
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      }
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    targets.forEach((el) => io.observe(el));
+  })();
+</script>
 </body>
 </html>

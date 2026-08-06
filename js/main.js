@@ -20,7 +20,7 @@ const PREFS_KEY = 'kronspiel-prefs-v1';
 // ---------------------------------------------------------------------------
 
 let settings = { mode: 'hotseat', humanSide: BONE, level: 'courtier' };
-let prefs = { pieceSet: 'sigils' }; // boardLabels left unset → device default (hidden on mobile)
+let prefs = { pieceSet: 'sigils', sound: true }; // boardLabels left unset → device default (hidden on mobile)
 let hist = [];          // engine states, hist[hist.length-1] is current
 let logEntries = [];    // [{ply, side, text}]
 let capturedBy = { [BONE]: [], [ASH]: [] }; // piece types captured BY each side
@@ -37,6 +37,7 @@ let net = null;          // Net instance while an online session is live
 let oppHere = false;     // the other court is connected
 let hostRetries = 0;     // room-code collision retries
 
+let wasPeril = false;    // last-painted peril state, so the warning sound fires on the rising edge
 let noticeText = null;   // transient substatus line: illegal-move hints, opening announcements
 let tut = null;          // { step } while the Primer is running
 let aiOpening = null;    // the Court's scripted opening for this game, or null
@@ -67,6 +68,7 @@ function buildBoard() {
     squares.push(el);
   }
   boardEl.addEventListener('click', onBoardClick);
+  document.addEventListener('keydown', onBoardKey);
   layoutBoard();
 }
 
@@ -111,13 +113,25 @@ function placePiece(el, sq) {
   el.style.transform = `translate(${dc * 100}%, ${dr * 100}%)`;
 }
 
+// The glyph rides an inner wrapper, so it can hop/settle independently of the
+// outer element's square-to-square transition.
+const pieceInner = (type) => `<span class="pc-inner">${pieceHTML(prefs.pieceSet, type)}</span>`;
+
 function makePieceEl(val, sq) {
   const el = document.createElement('div');
   el.className = 'piece ' + (val > 0 ? 'bone-piece' : 'ash-piece');
-  el.innerHTML = pieceHTML(prefs.pieceSet, Math.abs(val));
+  el.innerHTML = pieceInner(Math.abs(val));
   placePiece(el, sq);
   piecesEl.appendChild(el);
   return el;
+}
+
+// Restart a one-shot animation class on an element.
+function pulseClass(el, cls, ms) {
+  el.classList.remove(cls);
+  void el.offsetWidth; // reflow so the animation replays
+  el.classList.add(cls);
+  setTimeout(() => el.classList.remove(cls), ms);
 }
 
 // Rebuild the piece layer from scratch (new game, undo, load, flip)
@@ -135,18 +149,22 @@ function animateMove(m) {
   const el = pieceEls.get(m.from);
   const target = pieceEls.get(m.to);
   if (target) {
+    emberBurst(m.to); // the taken piece scatters into embers
     target.classList.add('captured-anim');
     setTimeout(() => target.remove(), 260);
     pieceEls.delete(m.to);
   }
   if (el) {
     el.classList.add('moving');
+    // Die Flucht arcs and glows; an ordinary move gives a small landing settle.
+    if (m.flucht) pulseClass(el, 'flucht-leap', 320);
+    else if (!reduceMotion()) pulseClass(el, 'settle', 320);
     placePiece(el, m.to);
     pieceEls.delete(m.from);
     pieceEls.set(m.to, el);
     setTimeout(() => {
       el.classList.remove('moving');
-      if (m.promo) el.innerHTML = pieceHTML(prefs.pieceSet, GESANDTER);
+      if (m.promo) el.innerHTML = pieceInner(GESANDTER);
     }, 230);
   }
   if (m.promo && !el) syncPieces();
@@ -177,8 +195,9 @@ function paint() {
   for (const el of squares) {
     const sq = +el.dataset.sq;
     el.classList.remove('sel', 'move', 'capture', 'flucht-target', 'last-from', 'last-to',
-      'esc-open', 'esc-enemy', 'esc-own', 'doom-enemy', 'doom-own', 'doom-krone', 'krone-warn', 'krone-flee', 'tut-mark');
+      'esc-open', 'esc-enemy', 'esc-own', 'doom-enemy', 'doom-own', 'doom-krone', 'krone-warn', 'krone-flee', 'tut-mark', 'cursor');
     if (tutMarks && tutMarks.has(sq)) el.classList.add('tut-mark');
+    if (cursorSq === sq && boardInteractive()) el.classList.add('cursor');
     if (lastMove) {
       if (sq === lastMove.from) el.classList.add('last-from');
       if (sq === lastMove.to) el.classList.add('last-to');
@@ -214,6 +233,15 @@ function paint() {
     const el = squares.find((s) => +s.dataset.sq === findKrone(state.board, state.turn));
     if (el) { el.classList.remove('krone-warn'); el.classList.add('krone-flee'); }
   }
+
+  // Peril: a red screen-edge vignette when the side-to-move's own Krone is one
+  // touch from ruin — but only when that Krone belongs to a human player.
+  const humanToMove = !isTutorial() && (settings.mode === 'hotseat' || state.turn === settings.humanSide);
+  const peril = !result && humanToMove && warnInfo &&
+    ((warnInfo.open.length <= 1 && warnInfo.enemyTouch) || softFlee());
+  document.body.classList.toggle('peril', !!peril);
+  if (peril && !wasPeril) { sfx('warn'); haptic([12, 40, 12]); }
+  wasPeril = !!peril;
 
   paintTutArrows();
 
@@ -371,18 +399,22 @@ function paintLog() {
 // Interaction
 // ---------------------------------------------------------------------------
 
-function onBoardClick(e) {
-  if (annotating || editing || viewing) return; // annotate / edit / replay modes own the board
-  if (document.body.classList.contains('idle')) return; // the closed board is inert
-  const sqEl = e.target.closest('.sq');
-  if (!sqEl || result || aiThinking) return;
-  if (settings.mode === 'ai' && cur().turn !== settings.humanSide) return;
-  if (isOnline() && (!oppHere || !net?.connected || cur().turn !== settings.humanSide)) return;
-  if (isTutorial() && (!LESSONS[tut.step]?.expect || tut.done)) return; // narration steps (and a lesson already answered): the board rests
-  const sq = +sqEl.dataset.sq;
+// True when the human may act on the board right now (not a modal/other mode).
+function boardInteractive() {
+  if (annotating || editing || viewing) return false;
+  if (document.body.classList.contains('idle')) return false;
+  if (result || aiThinking) return false;
+  if (settings.mode === 'ai' && cur().turn !== settings.humanSide) return false;
+  if (isOnline() && (!oppHere || !net?.connected || cur().turn !== settings.humanSide)) return false;
+  if (isTutorial() && (!LESSONS[tut.step]?.expect || tut.done)) return false;
+  return true;
+}
+
+// Select / move / deselect the given square — shared by click and keyboard.
+function activateSquare(sq) {
+  if (!boardInteractive()) return;
   const state = cur();
   noticeText = null;
-
   if (selection !== null) {
     const mv = legalCache.find((m) => m.from === selection && m.to === sq);
     if (mv) {
@@ -396,17 +428,55 @@ function onBoardClick(e) {
       playMove(mv);
       return;
     }
-    // Not a legal destination — explain why, when there is a why (§6 safeguards)
-    const hint = illegalHint(selection, sq);
+    const hint = illegalHint(selection, sq); // §6 safeguards: say why it's barred
     if (hint) noticeText = hint;
   }
   const p = state.board[sq];
-  if (p !== EMPTY && Math.sign(p) === state.turn) {
-    selection = selection === sq ? null : sq;
+  selection = (p !== EMPTY && Math.sign(p) === state.turn) ? (selection === sq ? null : sq) : null;
+  paint();
+}
+
+function onBoardClick(e) {
+  const sqEl = e.target.closest('.sq');
+  if (!sqEl) return;
+  cursorSq = null; // pointer takes over from the keyboard cursor
+  activateSquare(+sqEl.dataset.sq);
+}
+
+// ---- Keyboard navigation: a cursor you drive with the arrows, Enter to act ----
+let cursorSq = null;
+
+function moveCursor(dr, dc) {
+  if (!boardInteractive()) return;
+  if (cursorSq === null) {
+    // start on the player's own Krone, or the centre
+    cursorSq = findKrone(cur().board, cur().turn);
+    if (cursorSq < 0) cursorSq = idx(5, 5);
   } else {
-    selection = null;
+    const d = sqToDisp(cursorSq);
+    const ndr = clamp(d.dr + dr, 0, N - 1), ndc = clamp(d.dc + dc, 0, N - 1);
+    cursorSq = dispToSq(ndr, ndc);
   }
   paint();
+  squares.find((s) => +s.dataset.sq === cursorSq)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function onBoardKey(e) {
+  if (!boardInteractive()) return;
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return; // typing elsewhere
+  switch (e.key) {
+    case 'ArrowUp': e.preventDefault(); moveCursor(-1, 0); break;
+    case 'ArrowDown': e.preventDefault(); moveCursor(1, 0); break;
+    case 'ArrowLeft': e.preventDefault(); moveCursor(0, -1); break;
+    case 'ArrowRight': e.preventDefault(); moveCursor(0, 1); break;
+    case 'Enter': case ' ':
+      if (cursorSq === null) { moveCursor(0, 0); break; }
+      e.preventDefault(); activateSquare(cursorSq); break;
+    case 'Escape':
+      if (selection !== null || cursorSq !== null) { selection = null; cursorSq = null; paint(); }
+      break;
+  }
 }
 
 // If from→to fits the piece's movement but is barred by a rule, say which rule.
@@ -468,6 +538,9 @@ function playMove(m, fromRemote = false) {
   if (capturedVal !== EMPTY) capturedBy[before.turn].push(Math.abs(capturedVal));
   lastMove = { from: m.from, to: m.to };
   animateMove(m);
+  if (m.flucht) sfx('flucht');
+  else if (capturedVal !== EMPTY) { sfx('capture'); haptic(18); }
+  else sfx('place');
   afterPositionChange();
 }
 
@@ -571,10 +644,19 @@ function setResult(end) {
   result = r;
   selection = null;
   legalCache = [];
-  showGameOver();
+  // Decisive endings get a short cinematic beat before the verdict card.
+  const dramatic = !isTutorial() && ['isolation', 'palsy', 'mutual'].includes(r.type);
+  if (dramatic && !reduceMotion()) {
+    playEndgame(end);
+    setTimeout(showGameOver, 1150);
+  } else {
+    if (dramatic) playEndgame(end); // sound/embers still, just no darken-pause
+    showGameOver();
+  }
 }
 
 function showGameOver() {
+  clearEndgame();
   $('over-title').textContent = result.title;
   $('over-text').textContent = result.text;
   const rematch = $('btn-over-rematch');
@@ -636,6 +718,10 @@ function closeGameSession() {
   aiThinking = false;
   aiOpening = null;
   noticeText = null;
+  cursorSq = null;
+  clearEndgame();
+  document.body.classList.remove('peril');
+  wasPeril = false;
   clearSave();
   $('ov-over').classList.add('hidden');
   $('btn-show-result').classList.add('hidden');
@@ -786,6 +872,7 @@ function scheduleAiMove() {
 
 function newGame(fresh) {
   if (fresh) {
+    markVisited();
     if (viewing) leaveViewingUi();
     clearAnno();
     hist = [initialState()];
@@ -935,6 +1022,8 @@ const BOARD_THEMES = [
   { key: 'forest', name: 'Forest',     light: '#e4dabd', dark: '#5c7d4d' },
   { key: 'slate',  name: 'Slate',      light: '#c2c8d0', dark: '#4e5863' },
   { key: 'marble', name: 'Marble',     light: '#d8d4cb', dark: '#79766f' },
+  { key: 'frost',  name: 'Long Winter', light: '#dae7ee', dark: '#63788a' },
+  { key: 'candle', name: 'Candlelight', light: '#e2c583', dark: '#6f4a24' },
 ];
 
 const boardTheme = () => BOARD_THEMES.find((t) => t.key === (prefs.boardTheme || '')) || BOARD_THEMES[0];
@@ -979,6 +1068,106 @@ function buildBoardThemeSwatches() {
     `title="${t.name}" aria-label="${t.name}" style="--l:${t.light}; --d:${t.dark}"></button>`).join('');
 }
 
+// ---------------------------------------------------------------------------
+// Sound & haptics — small synthesised cues (no assets). The AudioContext is
+// created lazily on the first cue (which always follows a user gesture), and
+// everything no-ops unless Options → Sound is on.
+// ---------------------------------------------------------------------------
+
+const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let actx = null;
+function audio() {
+  if (!prefs.sound) return null;
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume().catch(() => {});
+    return actx;
+  } catch { return null; }
+}
+function tone({ freq = 220, dur = 0.12, type = 'sine', gain = 0.18, attack = 0.006, freqEnd = null, delay = 0 }) {
+  const ac = audio(); if (!ac) return;
+  const t0 = ac.currentTime + delay;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t0);
+  if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(gain, t0 + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(ac.destination);
+  o.start(t0); o.stop(t0 + dur + 0.03);
+}
+function noiseBurst({ dur = 0.07, gain = 0.14, delay = 0, lp = 2200 }) {
+  const ac = audio(); if (!ac) return;
+  const t0 = ac.currentTime + delay;
+  const n = Math.max(1, Math.floor(ac.sampleRate * dur));
+  const buf = ac.createBuffer(1, n, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+  const g = ac.createGain(); g.gain.value = gain;
+  src.connect(f).connect(g).connect(ac.destination);
+  src.start(t0);
+}
+const SFX = {
+  place() { noiseBurst({ dur: 0.05, gain: 0.11, lp: 2600 }); tone({ freq: 150, dur: 0.08, gain: 0.14 }); },
+  capture() { noiseBurst({ dur: 0.13, gain: 0.17, lp: 1400 }); tone({ freq: 92, dur: 0.17, type: 'triangle', gain: 0.2 }); },
+  flucht() { tone({ freq: 300, freqEnd: 840, dur: 0.3, gain: 0.15 }); tone({ freq: 150, freqEnd: 420, dur: 0.3, type: 'triangle', gain: 0.09 }); },
+  warn() { tone({ freq: 174.6, dur: 0.55, gain: 0.13 }); tone({ freq: 176.5, dur: 0.55, gain: 0.1 }); },
+  victory() { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone({ freq: f, dur: 0.9, gain: 0.15, delay: i * 0.1 })); tone({ freq: 261.6, dur: 1.2, type: 'triangle', gain: 0.07 }); },
+  defeat() { [392, 311.1, 233.1].forEach((f, i) => tone({ freq: f, dur: 0.7, type: 'triangle', gain: 0.14, delay: i * 0.13 })); },
+  draw() { tone({ freq: 349.2, dur: 0.8, gain: 0.11 }); tone({ freq: 392, dur: 0.8, gain: 0.09, delay: 0.12 }); },
+};
+function sfx(name) { try { SFX[name]?.(); } catch { /* audio unavailable */ } }
+function haptic(pattern) { if (prefs.sound) { try { navigator.vibrate?.(pattern); } catch { /* unsupported */ } } }
+
+// ---------------------------------------------------------------------------
+// Board effects — embers on capture, and the endgame flare. Pure overlay.
+// ---------------------------------------------------------------------------
+
+// A little shower of embers rising from a square (a piece being taken, or a
+// Krone falling). Positioned in the board's own coordinate space.
+function emberBurst(sq, count = 7) {
+  if (reduceMotion()) return;
+  const { dr, dc } = sqToDisp(sq);
+  const host = document.createElement('div');
+  host.className = 'ember-burst';
+  host.style.left = ((dc + 0.5) / N * 100) + '%';
+  host.style.top = ((dr + 0.5) / N * 100) + '%';
+  for (let i = 0; i < count; i++) {
+    const s = document.createElement('span');
+    const ang = -Math.PI * (0.72 + Math.random() * 1.56); // fan upward
+    const dist = 14 + Math.random() * 24;
+    s.style.setProperty('--dx', (Math.cos(ang) * dist).toFixed(1) + 'px');
+    s.style.setProperty('--dy', (Math.sin(ang) * dist - 10).toFixed(1) + 'px');
+    s.style.setProperty('--dl', Math.floor(Math.random() * 90) + 'ms');
+    host.appendChild(s);
+  }
+  boardEl.appendChild(host);
+  setTimeout(() => host.remove(), 1100);
+}
+
+// The decisive-ending beat: darken the board, flare embers from the fallen
+// Krone(s), sound the verdict. The dialog follows after a short pause.
+function playEndgame(end) {
+  document.body.classList.add('endgame');
+  const info = end.info;
+  if (end.type === 'mutual') {
+    emberBurst(findKrone(cur().board, BONE), 9);
+    emberBurst(findKrone(cur().board, ASH), 9);
+    sfx('draw');
+  } else if (info && info.kSq >= 0) {
+    emberBurst(info.kSq, 12);
+    const loser = end.loser;
+    const humanLost = settings.mode !== 'hotseat' && loser === settings.humanSide;
+    const humanWon = settings.mode !== 'hotseat' && loser === -settings.humanSide;
+    sfx(humanLost ? 'defeat' : humanWon ? 'victory' : 'victory');
+    haptic(humanLost ? [40, 60, 40] : [30, 40, 30, 40, 60]);
+  }
+}
+function clearEndgame() { document.body.classList.remove('endgame'); }
+
 function load() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
@@ -1011,6 +1200,7 @@ function load() {
 // ---------------------------------------------------------------------------
 
 function startTutorial() {
+  markVisited();
   leaveIdle();
   if (editing) exitEditorUi();
   if (viewing) leaveViewingUi();
@@ -2287,7 +2477,7 @@ function animateReplayStep(oldStep, newStep) {
   setTimeout(() => {
     if (pieceEls.get(to) !== el) return; // a later step overtook this one
     el.classList.remove('moving');
-    if (after.board[to] !== EMPTY) el.innerHTML = pieceHTML(prefs.pieceSet, Math.abs(after.board[to]));
+    if (after.board[to] !== EMPTY) el.innerHTML = pieceInner(Math.abs(after.board[to]));
   }, 230);
   // Rewinding a capture: the taken piece returns to its square.
   if (!forward && after.board[m.to] !== EMPTY) pieceEls.set(m.to, makePieceEl(after.board[m.to], m.to));
@@ -3074,6 +3264,8 @@ function wireUi() {
       b.classList.toggle('active', b.dataset.v === prefs.pieceSet));
     $('seg-labels').querySelectorAll('.seg-btn').forEach((b) =>
       b.classList.toggle('active', b.dataset.v === (showLabels() ? 'show' : 'hide')));
+    $('seg-sound').querySelectorAll('.seg-btn').forEach((b) =>
+      b.classList.toggle('active', b.dataset.v === (prefs.sound ? 'on' : 'off')));
     paintPieceSetPreview();
     buildBoardThemeSwatches();
     $('ov-options').classList.remove('hidden');
@@ -3097,6 +3289,11 @@ function wireUi() {
     prefs.boardLabels = v === 'show';
     savePrefs();
     applyBoardLabels();
+  });
+  wireSeg('seg-sound', (v) => {
+    prefs.sound = v === 'on';
+    savePrefs();
+    if (prefs.sound) sfx('place'); // a click of confirmation
   });
 
   $('btn-confirm-no').addEventListener('click', () => {
@@ -3170,10 +3367,47 @@ function wireUi() {
 // Boot
 // ---------------------------------------------------------------------------
 
+// A small pool of colophon epigraphs; one is drawn each visit.
+const COLOPHON = [
+  ['“You need not kill a king to finish him. You need only see that he has nowhere left to stand.”',
+    '— Knight-Captain Sigismund von Höthbacher, <em>Ordo Theoderici Cohortis Niger</em>'],
+  ['“A crown is not taken. It is surrounded, and then it is merely a man on a chair.”',
+    '— Margravine Ottilie of the Ashfords, <em>Letters from the Winter Court</em>'],
+  ['“The wall that ends a king is built as often by his own guard as by the enemy’s.”',
+    '— <em>The Book of the Isolated Throne</em>, folio xxiv'],
+  ['“Mercy on the board is a door left open. Leave none, and the game ends itself.”',
+    '— Spymaster Aldric Venn, <em>On the Craft of Sieges</em>'],
+  ['“Two crowns cornered in the same breath: the board’s one honest verdict.”',
+    '— proverb of the Bone Court'],
+];
+function rotateColophon() {
+  const q = $('colophon-quote'), c = $('colophon-cite');
+  if (!q || !c) return;
+  const pick = COLOPHON[Math.floor(Math.random() * COLOPHON.length)];
+  q.textContent = pick[0];
+  c.innerHTML = '— ' + pick[1].replace(/^—\s*/, '');
+}
+
+// A first-visit nudge toward the Primer, shown once in the court menu.
+const VISIT_KEY = 'kronspiel-visited-v1';
+function markVisited() {
+  try { localStorage.setItem(VISIT_KEY, '1'); } catch { /* no storage */ }
+  document.body.classList.remove('first-visit');
+}
+function initFirstVisit() {
+  let seen = true;
+  try { seen = !!localStorage.getItem(VISIT_KEY); } catch { /* assume seen */ }
+  if (!seen) document.body.classList.add('first-visit');
+  // Any real choice from the court menu counts as "seen".
+  $('court-menu')?.addEventListener('click', (e) => { if (e.target.closest('.hall-tile')) markVisited(); });
+}
+
 loadPrefs();
 applyBoardLabels();
 applyBoardTheme();
+rotateColophon();
 wireUi();
+initFirstVisit();
 const restored = load();
 if (!restored) {
   hist = [initialState()];

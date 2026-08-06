@@ -507,6 +507,14 @@ h1 {
 }
 .sq.last-from, .sq.last-to { box-shadow: inset 0 0 0 100vmax rgba(200, 162, 74, 0.17); }
 
+/* keyboard cursor — a bright inset frame (outline avoids the ::after / box-shadow
+   already used by squares and highlights) */
+.sq.cursor {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: -3px;
+  z-index: 4;
+}
+
 .sq.move::before {
   content: "";
   position: absolute;
@@ -521,7 +529,9 @@ h1 {
     0 0 10px rgba(200, 162, 74, 0.35);
   z-index: 3;
   transition: width 0.12s, height 0.12s;
+  animation: dot-pop 0.18s ease-out backwards;
 }
+@keyframes dot-pop { from { transform: scale(0.2); opacity: 0; } }
 .sq.ash.move::before { background: radial-gradient(circle at 38% 32%, rgba(243, 236, 220, 0.28), rgba(243, 236, 220, 0.12) 70%); }
 .sq.move:hover::before { width: 34%; height: 34%; }
 
@@ -535,6 +545,7 @@ h1 {
     0 0 12px rgba(184, 68, 47, 0.45),
     inset 0 0 12px rgba(184, 68, 47, 0.3);
   z-index: 3;
+  animation: dot-pop 0.18s ease-out backwards;
 }
 
 .sq.flucht-target::after {
@@ -1038,6 +1049,67 @@ body.viewing .piece { animation: none; }
 .piece.captured-anim { opacity: 0; filter: blur(3px); }
 .piece.moving { z-index: 5; }
 
+/* the glyph rides an inner wrapper so it can hop/settle without disturbing the
+   outer element's square-to-square transition */
+.pc-inner { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+
+/* a small landing bounce on an ordinary move */
+.piece.settle .pc-inner { animation: settle 0.3s cubic-bezier(0.3, 1.4, 0.5, 1); }
+@keyframes settle {
+  0% { transform: translateY(-8%) scale(1.06); }
+  55% { transform: translateY(2%) scale(0.97); }
+  100% { transform: none; }
+}
+
+/* Die Flucht — the Krone leaps: the glyph arcs up and back down while the
+   piece slides, and the whole piece glows gold */
+.piece.flucht-leap { z-index: 6; }
+.piece.flucht-leap .pc-inner {
+  animation: flucht-hop 0.32s ease-in-out;
+  filter: drop-shadow(0 0 9px rgba(232, 201, 106, 0.9)) drop-shadow(0 0 3px rgba(232, 201, 106, 0.8));
+}
+@keyframes flucht-hop {
+  0% { transform: translateY(0) scale(1); }
+  45% { transform: translateY(-42%) scale(1.12); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* embers scattering from a taken piece (or a fallen Krone) */
+.ember-burst { position: absolute; width: 0; height: 0; pointer-events: none; z-index: 7; }
+.ember-burst span {
+  position: absolute;
+  left: 0; top: 0;
+  width: calc(var(--board-max) / 11 * 0.17);
+  height: calc(var(--board-max) / 11 * 0.17);
+  margin: calc(var(--board-max) / 11 * -0.085);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #ffe6a8, #e8892f 45%, rgba(184, 68, 47, 0.5) 70%, transparent 78%);
+  box-shadow: 0 0 6px rgba(232, 137, 47, 0.85);
+  opacity: 0.95;
+  animation: emberpop 0.9s ease-out var(--dl) forwards;
+}
+@keyframes emberpop {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.95; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(0.25); opacity: 0; }
+}
+
+/* full-screen effect layers (peril vignette, endgame flare) */
+.fx-overlay { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+#fx-peril {
+  z-index: 30;
+  background: radial-gradient(ellipse at center, transparent 52%, rgba(184, 68, 47, 0.34) 100%);
+}
+body.peril #fx-peril { opacity: 1; animation: peril-pulse 1.7s ease-in-out infinite; }
+@keyframes peril-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+
+#fx-endgame {
+  z-index: 31;
+  background: radial-gradient(circle at 50% 45%, rgba(200, 162, 74, 0.18), rgba(8, 5, 3, 0.55) 72%);
+}
+body.endgame #fx-endgame { opacity: 1; animation: end-flare 1.15s ease-out both; }
+@keyframes end-flare { 0% { opacity: 0; } 22% { opacity: 1; } 100% { opacity: 0.72; } }
+body.endgame .board-inner { filter: brightness(0.62) saturate(0.72); transition: filter 0.4s ease; }
+
 /* SVG piece sigils — colour by court, wherever they appear */
 svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 .piece svg.sigil { width: 80%; height: 80%; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55)); }
@@ -1371,6 +1443,17 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 
 /* rules body */
 .rules-body { font-size: 16px; line-height: 1.55; }
+/* an illuminated initial, like a manuscript's opening letter */
+.rules-body > p:first-of-type::first-letter {
+  float: left;
+  font-family: "Cinzel Decorative", "Cinzel", serif;
+  font-weight: 700;
+  font-size: 3.5em;
+  line-height: 0.72;
+  padding: 6px 12px 0 0;
+  color: var(--gold-bright);
+  text-shadow: 0 2px 7px rgba(0, 0, 0, 0.6);
+}
 .rules-body h3 {
   font-family: "Cinzel", serif;
   font-size: 14px;
@@ -1651,6 +1734,25 @@ body.idle .court-menu { display: flex; flex-direction: column; gap: 12px; }
   color: var(--ink-dim);
 }
 .cm-tiles { display: grid; grid-template-columns: 1fr; gap: 8px; text-align: left; }
+
+/* first-visit nudge toward the Primer */
+.cm-firsttime {
+  display: none;
+  margin: -2px 0 6px;
+  padding: 8px 10px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--gold-pale);
+  background: linear-gradient(180deg, rgba(200, 162, 74, 0.16), rgba(200, 162, 74, 0.04));
+  border: 1px solid var(--gold-deep);
+  border-radius: 3px;
+}
+.cm-firsttime strong { color: var(--gold-bright); }
+body.first-visit .cm-firsttime { display: block; }
+body.first-visit #cm-primer {
+  border-color: var(--gold);
+  box-shadow: 0 0 16px rgba(200, 162, 74, 0.22), inset 0 1px 0 rgba(200, 162, 74, 0.15);
+}
 
 .hall-tile {
   display: flex;
@@ -2019,16 +2121,22 @@ body.no-board-labels .files { display: none; }
 /* ---------- reduced motion ---------- */
 
 @media (prefers-reduced-motion: reduce) {
-  .embers { display: none; }
+  .embers, .ember-burst { display: none; }
   body::before,
   h1,
   .sq.asch::before,
   .sq.asch::after,
   .sq.flucht-target::after,
+  .sq.move::before,
+  .sq.capture::before,
   .btn.claim,
   .escape-badge.tight,
   .room-code,
-  .piece {
+  .piece,
+  .pc-inner,
+  .fx-overlay {
     animation: none !important;
   }
+  body.endgame .board-inner { filter: none; }
+  #fx-peril, #fx-endgame { opacity: 0 !important; }
 }
