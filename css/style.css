@@ -507,12 +507,12 @@ h1 {
 }
 .sq.last-from, .sq.last-to { box-shadow: inset 0 0 0 100vmax rgba(200, 162, 74, 0.17); }
 
-/* keyboard cursor — a bright inset frame (outline avoids the ::after / box-shadow
-   already used by squares and highlights) */
+/* keyboard cursor — a bright inset frame. No z-index: lifting the square (with
+   its opaque face) above the pieces layer would hide the glyph on that tile.
+   The outline paints at the cell edge; the piece stays visible on top. */
 .sq.cursor {
   outline: 2px solid var(--gold-bright);
   outline-offset: -3px;
-  z-index: 4;
 }
 
 .sq.move::before {

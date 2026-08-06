@@ -471,8 +471,10 @@ function onBoardKey(e) {
     case 'ArrowLeft': e.preventDefault(); moveCursor(0, -1); break;
     case 'ArrowRight': e.preventDefault(); moveCursor(0, 1); break;
     case 'Enter': case ' ':
-      if (cursorSq === null) { moveCursor(0, 0); break; }
-      e.preventDefault(); activateSquare(cursorSq); break;
+      e.preventDefault();
+      if (cursorSq === null) moveCursor(0, 0); // first press: place the cursor on the Krone…
+      activateSquare(cursorSq);                // …and act on it in the same keystroke
+      break;
     case 'Escape':
       if (selection !== null || cursorSq !== null) { selection = null; cursorSq = null; paint(); }
       break;
