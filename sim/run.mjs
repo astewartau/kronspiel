@@ -19,6 +19,11 @@ const CFG = {
   loose: { dir: 'loose', cfg: {} },
   loosetruce: { dir: 'loose', cfg: { trucePly: 12 } },
   winter: { dir: 'winter', cfg: { winter: [[60, 0], [100, 1], [140, 2]] } },
+  // The Flucht/Isolation question — Baseline vs Options A / B / C.
+  'iso-base': { dir: 'baseline', cfg: {} },
+  'iso-a': { dir: 'fluchtA', cfg: {} },
+  'iso-b': { dir: 'fluchtB', cfg: {} },
+  'iso-c': { dir: 'fluchtB', cfg: { softIso: true } },
 };
 if (!CFG[name]) { console.error('unknown variant', name); process.exit(1); }
 const { dir, cfg } = CFG[name];
@@ -87,6 +92,8 @@ function playGame(seed) {
   const frozenRings = new Set();
   let truceSaves = 0;
   let claimed = 0;
+  let softIsoCount = 0; // Option C: turns a Krone was forced to flee
+  let fluchtCount = 0;  // Flucht leaps actually played
 
   for (;;) {
     if (cfg.winter) {
@@ -105,16 +112,16 @@ function playGame(seed) {
     if (mine.isolated && !inTruce) {
       const theirs = engine.isolationInfo(board, -turn, flucht[-turn], true);
       return theirs.isolated
-        ? { type: 'mutual', plies: ply, truceSaves, claimed }
-        : { type: 'isolation', loser: turn, plies: ply, truceSaves, claimed };
+        ? { type: 'mutual', plies: ply, truceSaves, claimed, soft: softIsoCount, flucht: fluchtCount }
+        : { type: 'isolation', loser: turn, plies: ply, truceSaves, claimed, soft: softIsoCount, flucht: fluchtCount };
     }
 
     const myBare = bare(board, turn), theirBare = bare(board, -turn);
-    if (myBare && theirBare) return { type: 'empty', plies: ply, truceSaves, claimed };
+    if (myBare && theirBare) return { type: 'empty', plies: ply, truceSaves, claimed, soft: softIsoCount, flucht: fluchtCount };
     if (cfg.hollow) {
       if (myBare) {
         bareTurns[turn]++;
-        if (bareTurns[turn] > cfg.hollow) return { type: 'hollow', loser: turn, plies: ply, truceSaves, claimed };
+        if (bareTurns[turn] > cfg.hollow) return { type: 'hollow', loser: turn, plies: ply, truceSaves, claimed, soft: softIsoCount, flucht: fluchtCount };
       }
     }
 
@@ -122,17 +129,31 @@ function playGame(seed) {
     if (legal.length === 0) {
       if (inTruce) { truceSaves++; state = passTurn(state); continue; }
       if (mine.enemyTouch) {
-        return { type: 'palsy', loser: turn, plies: ply, truceSaves, claimed };
+        return { type: 'palsy', loser: turn, plies: ply, truceSaves, claimed, soft: softIsoCount, flucht: fluchtCount };
       }
-      return { type: 'frozen', plies: ply, truceSaves, claimed };
+      return { type: 'frozen', plies: ply, truceSaves, claimed, soft: softIsoCount, flucht: fluchtCount };
     }
 
-    if ((state.reps[engine.positionKey(state)] || 0) >= 3) return { type: 'siege', plies: ply, truceSaves, claimed };
-    if (state.clock >= 100) return { type: 'winterdraw', plies: ply, truceSaves, claimed };
-    if (ply >= PLY_CAP) return { type: 'cap', plies: ply, truceSaves, claimed };
+    if ((state.reps[engine.positionKey(state)] || 0) >= 3) return { type: 'siege', plies: ply, truceSaves, claimed, soft: softIsoCount, flucht: fluchtCount };
+    if (state.clock >= 100) return { type: 'winterdraw', plies: ply, truceSaves, claimed, soft: softIsoCount, flucht: fluchtCount };
+    if (ply >= PLY_CAP) return { type: 'cap', plies: ply, truceSaves, claimed, soft: softIsoCount, flucht: fluchtCount };
 
-    const m = ai.findBestMove(state, 'sim', rng);
-    if (!m) return { type: 'frozen', plies: ply, truceSaves, claimed };
+    let m;
+    if (cfg.softIso && flucht[turn] && engine.isolationInfo(board, turn, false, true).isolated) {
+      // Soft Isolation (Option C): saved from Isolation only by Die Flucht — the
+      // Krone must flee this turn (the one exception to no reaction time).
+      softIsoCount++;
+      const fl = legal.filter((x) => x.flucht);
+      const pick = fl.reduce((best, mv) => {
+        const v = ai.quickEval(engine.apply(state, mv), turn);
+        return best && best.v >= v ? best : { mv, v };
+      }, null);
+      m = pick ? pick.mv : ai.findBestMove(state, 'sim', rng);
+    } else {
+      m = ai.findBestMove(state, 'sim', rng);
+    }
+    if (!m) return { type: 'frozen', plies: ply, truceSaves, claimed, soft: softIsoCount, flucht: fluchtCount };
+    if (m.flucht) fluchtCount++;
     state = engine.apply(state, m);
   }
 }

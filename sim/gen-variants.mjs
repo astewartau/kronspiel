@@ -60,11 +60,48 @@ const aiAnalysis = patch(aiSrc, [{
   // A court playing its opening keeps to the script while the script holds up.`,
 }], 'ai/analysis');
 
+// --- Flucht / Isolation reconciliation variants (the "Flight" question) ---
+// Baseline is inconsistent: the Flucht MOVE forbids a threatened pass-through,
+// but the isolation TEST credits an escape across one. Three fixes:
+
+// Option A: the isolation test requires a *legal* Flucht (unthreatened path),
+// matching the move. Consequence: Flucht can never rescue a besieged Krone.
+const engineFluchtA = patch(engineSrc, [{
+  from: `        if (i === ASCH || board[i] !== EMPTY) break;
+        if (d >= 2) {
+          if (attacked(board, i, -side)) {
+            enemyTouch = true;
+            if (full) closed.push({ sq: i, occ: null, threat: true, flucht: true });
+          } else {
+            open.push(i);
+          }
+        }`,
+  to: `        if (i === ASCH || board[i] !== EMPTY) break;
+        if (attacked(board, i, -side)) {
+          if (d >= 2) { enemyTouch = true; if (full) closed.push({ sq: i, occ: null, threat: true, flucht: true }); }
+          break; // OPTION A: a threatened pass-through square shuts the road
+        }
+        if (d >= 2) open.push(i);`,
+}], 'engine/fluchtA');
+
+// Option B (and C): the Flucht MOVE may leap OVER threatened squares — only the
+// landing must be empty and unthreatened. The isolation test (unchanged) now
+// matches the move, so a besieged Krone with a safe landing is genuinely free.
+const engineFluchtB = patch(engineSrc, [{
+  from: `            if (t === ASCH || board[t] !== EMPTY || attacked(board, t, -side)) break;
+            if (d >= 2) moves.push({ from, to: t, flucht: true });`,
+  to: `            if (t === ASCH || board[t] !== EMPTY) break;
+            // OPTION B/C: leap over threatened squares; only the landing must be safe.
+            if (d >= 2 && !attacked(board, t, -side)) moves.push({ from, to: t, flucht: true });`,
+}], 'engine/fluchtB');
+
 const variants = {
   baseline: { engine: engineSrc, ai: aiSrc },
   analysis: { engine: engineSrc, ai: aiAnalysis },
   loose: { engine: engineLoose, ai: aiSrc },
   winter: { engine: engineWinter, ai: aiSrc },
+  fluchtA: { engine: engineFluchtA, ai: aiSrc },
+  fluchtB: { engine: engineFluchtB, ai: aiSrc },
 };
 
 for (const [name, files] of Object.entries(variants)) {
