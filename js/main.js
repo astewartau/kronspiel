@@ -1086,40 +1086,118 @@ function audio() {
     return actx;
   } catch { return null; }
 }
-function tone({ freq = 220, dur = 0.12, type = 'sine', gain = 0.18, attack = 0.006, freqEnd = null, delay = 0 }) {
-  const ac = audio(); if (!ac) return;
-  const t0 = ac.currentTime + delay;
-  const o = ac.createOscillator(), g = ac.createGain();
-  o.type = type;
-  o.frequency.setValueAtTime(freq, t0);
-  if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t0 + dur);
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(gain, t0 + attack);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  o.connect(g).connect(ac.destination);
-  o.start(t0); o.stop(t0 + dur + 0.03);
+// A shared limiter bus, so overlapping voices never clip.
+function bus() {
+  const ac = audio(); if (!ac) return null;
+  if (!ac._bus) {
+    const comp = ac.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.knee.value = 24; comp.ratio.value = 3.5;
+    comp.attack.value = 0.003; comp.release.value = 0.18;
+    const g = ac.createGain(); g.gain.value = 0.9;
+    comp.connect(g).connect(ac.destination);
+    ac._bus = comp;
+  }
+  return ac._bus;
 }
-function noiseBurst({ dur = 0.07, gain = 0.14, delay = 0, lp = 2200 }) {
-  const ac = audio(); if (!ac) return;
+// Filtered noise into a given node — the strike/scrape ingredient.
+function noiseTo(dest, { dur = 0.06, gain = 0.2, delay = 0, type = 'lowpass', freq = 1200, q = 1, curve = 1 } = {}) {
+  const ac = audio(); if (!ac || !dest) return;
   const t0 = ac.currentTime + delay;
   const n = Math.max(1, Math.floor(ac.sampleRate * dur));
   const buf = ac.createBuffer(1, n, ac.sampleRate);
   const d = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, curve);
   const src = ac.createBufferSource(); src.buffer = buf;
-  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+  const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
   const g = ac.createGain(); g.gain.value = gain;
-  src.connect(f).connect(g).connect(ac.destination);
+  src.connect(f).connect(g).connect(dest);
   src.start(t0);
 }
+// A struck bell — inharmonic partials over a long decay, with a strike transient.
+function bell(freq, { dur = 1.4, gain = 0.16, delay = 0 } = {}) {
+  const ac = audio(), out = bus(); if (!ac || !out) return;
+  const t0 = ac.currentTime + delay;
+  const master = ac.createGain(); master.gain.value = gain; master.connect(out);
+  const partials = [[1, 1, 1], [2.01, 0.55, 0.85], [2.42, 0.42, 0.6], [3.0, 0.3, 0.5], [4.16, 0.22, 0.34], [5.43, 0.14, 0.24]];
+  for (const [ratio, amp, dscale] of partials) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = freq * ratio;
+    const d = Math.max(0.08, dur * dscale);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(amp, t0 + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+    o.connect(g).connect(master);
+    o.start(t0); o.stop(t0 + d + 0.05);
+  }
+  noiseTo(master, { dur: 0.012, gain: 0.5, delay, type: 'bandpass', freq: freq * 3, q: 1 });
+}
+// A plucked string — harmonic partials with a fast decay and a brightness that
+// fades as it rings (what makes a string read as a string). No feedback loop.
+function pluck(freq, { dur = 0.45, gain = 0.2, delay = 0 } = {}) {
+  const ac = audio(), out = bus(); if (!ac || !out) return;
+  const t0 = ac.currentTime + delay;
+  const master = ac.createGain(); master.gain.value = gain;
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.7;
+  lp.frequency.setValueAtTime(4200, t0);
+  lp.frequency.exponentialRampToValueAtTime(900, t0 + dur * 0.8);
+  master.connect(lp).connect(out);
+  const partials = [[1, 1], [2, 0.45], [3, 0.26], [4, 0.15], [5, 0.08]];
+  for (const [ratio, amp] of partials) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'triangle'; o.frequency.value = freq * ratio;
+    const d = Math.max(0.09, dur * (1 - (ratio - 1) * 0.13)); // upper partials fade first
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(amp, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+    o.connect(g).connect(master);
+    o.start(t0); o.stop(t0 + d + 0.05);
+  }
+}
+// A wooden knock — a resonant band of noise over a short pitched body.
+function knock({ freq = 780, dur = 0.055, gain = 0.3, delay = 0, q = 7 } = {}) {
+  const ac = audio(), out = bus(); if (!ac || !out) return;
+  const t0 = ac.currentTime + delay;
+  noiseTo(out, { dur, gain, delay, type: 'bandpass', freq, q, curve: 2 });
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(freq * 0.55, t0);
+  o.frequency.exponentialRampToValueAtTime(freq * 0.34, t0 + dur);
+  g.gain.setValueAtTime(gain * 0.6, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur * 1.8);
+  o.connect(g).connect(out);
+  o.start(t0); o.stop(t0 + dur * 1.9 + 0.02);
+}
+// A low bowed drone — the dread beneath a siege or an ending.
+function drone(freq, { dur = 1.3, gain = 0.1, delay = 0 } = {}) {
+  const ac = audio(), out = bus(); if (!ac || !out) return;
+  const t0 = ac.currentTime + delay;
+  const g = ac.createGain();
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700; lp.Q.value = 0.7;
+  const o1 = ac.createOscillator(), o2 = ac.createOscillator();
+  o1.type = 'sawtooth'; o1.frequency.value = freq;
+  o2.type = 'sawtooth'; o2.frequency.value = freq * 1.004;
+  const lfo = ac.createOscillator(), lg = ac.createGain();
+  lfo.frequency.value = 5.2; lg.gain.value = freq * 0.006;
+  lfo.connect(lg); lg.connect(o1.frequency); lg.connect(o2.frequency);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.14);
+  g.gain.setValueAtTime(gain, t0 + dur * 0.55);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o1.connect(lp); o2.connect(lp); lp.connect(g).connect(out);
+  const end = t0 + dur + 0.05;
+  o1.start(t0); o2.start(t0); lfo.start(t0);
+  o1.stop(end); o2.stop(end); lfo.stop(end);
+}
+// On-theme cues: wood for the hand, plucked strings for the leap, bells and
+// drones for the reckoning.
 const SFX = {
-  place() { noiseBurst({ dur: 0.05, gain: 0.11, lp: 2600 }); tone({ freq: 150, dur: 0.08, gain: 0.14 }); },
-  capture() { noiseBurst({ dur: 0.13, gain: 0.17, lp: 1400 }); tone({ freq: 92, dur: 0.17, type: 'triangle', gain: 0.2 }); },
-  flucht() { tone({ freq: 300, freqEnd: 840, dur: 0.3, gain: 0.15 }); tone({ freq: 150, freqEnd: 420, dur: 0.3, type: 'triangle', gain: 0.09 }); },
-  warn() { tone({ freq: 174.6, dur: 0.55, gain: 0.13 }); tone({ freq: 176.5, dur: 0.55, gain: 0.1 }); },
-  victory() { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone({ freq: f, dur: 0.9, gain: 0.15, delay: i * 0.1 })); tone({ freq: 261.6, dur: 1.2, type: 'triangle', gain: 0.07 }); },
-  defeat() { [392, 311.1, 233.1].forEach((f, i) => tone({ freq: f, dur: 0.7, type: 'triangle', gain: 0.14, delay: i * 0.13 })); },
-  draw() { tone({ freq: 349.2, dur: 0.8, gain: 0.11 }); tone({ freq: 392, dur: 0.8, gain: 0.09, delay: 0.12 }); },
+  place() { knock({ freq: 760, dur: 0.05, gain: 0.26, q: 6 }); },
+  capture() { knock({ freq: 300, dur: 0.08, gain: 0.32, q: 4 }); bell(120, { dur: 0.5, gain: 0.05 }); },
+  flucht() { pluck(392, { dur: 0.5, gain: 0.2 }); pluck(587.33, { dur: 0.6, gain: 0.17, delay: 0.085 }); },
+  warn() { bell(146.83, { dur: 1.7, gain: 0.13 }); drone(73.42, { dur: 1.5, gain: 0.05 }); },
+  victory() { [392, 493.88, 587.33, 784].forEach((f, i) => bell(f, { dur: 1.6, gain: 0.12, delay: i * 0.12 })); drone(196, { dur: 2.0, gain: 0.05 }); },
+  defeat() { [220, 174.61, 130.81].forEach((f, i) => bell(f, { dur: 1.7, gain: 0.13, delay: i * 0.34 })); drone(55, { dur: 2.0, gain: 0.06 }); },
+  draw() { bell(293.66, { dur: 1.3, gain: 0.12 }); bell(440, { dur: 1.3, gain: 0.09, delay: 0.11 }); },
 };
 function sfx(name) { try { SFX[name]?.(); } catch { /* audio unavailable */ } }
 function haptic(pattern) { if (prefs.sound) { try { navigator.vibrate?.(pattern); } catch { /* unsupported */ } } }
