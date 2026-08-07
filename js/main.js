@@ -6,7 +6,7 @@ import {
   initialState, genPseudo, genLegal, apply, make, attacked, turnStartResult,
   claimableDraws, isolationInfo, softIsolation, findKrone, notateBody, serialize, deserialize, positionKey,
 } from './engine.js';
-import { findBestMove, quickEval, OPENINGS } from './ai.js';
+import { findBestMove, quickEval, analyse, OPENINGS } from './ai.js';
 import { PIECE_SETS, pieceHTML, sigilInner } from './pieces.js';
 import { Net, makeCode, normalizeCode } from './net.js';
 import { LESSONS, buildTutState, sqOf } from './tutorial.js';
@@ -248,6 +248,7 @@ function paint() {
   paintBars();
   paintStatus();
   paintControls();
+  paintEval();
 }
 
 function paintBars() {
@@ -376,6 +377,14 @@ function logSpan(entry, cls) {
   } else {
     span.innerHTML = pieceHTML(prefs.pieceSet, entry.piece) + ' ' + entry.body;
   }
+  // The Court's verdict on your move, trailing the notation.
+  if (entry.quality && entry.quality.glyph) {
+    const b = document.createElement('span');
+    b.className = 'qbadge ' + entry.quality.cls;
+    b.textContent = entry.quality.glyph;
+    b.title = entry.quality.label;
+    span.appendChild(b);
+  }
   return span;
 }
 
@@ -393,6 +402,164 @@ function paintLog() {
     ol.appendChild(li);
   }
   ol.scrollTop = ol.scrollHeight;
+}
+
+// ---------------------------------------------------------------------------
+// The Court's assessment — a running evaluation from your side's point of view,
+// and a verdict on each of your moves against the Court's own best reply. Only
+// meaningful when there is a Court to hold an opinion (mode 'ai').
+// ---------------------------------------------------------------------------
+let evalScore = null;   // points from the human's view; + is good for you. null = unknown.
+let evalToken = 0;      // monotonic guard so a stale async result can't clobber a fresh eval.
+
+// Best→worst. A glyph of '' means the move is unremarkable and gets no badge.
+const QUALITY = {
+  brilliant:  { label: 'Brilliant',  glyph: '!!', cls: 'q-brilliant' },
+  perfect:    { label: 'Perfect',    glyph: '✦',  cls: 'q-perfect' },
+  great:      { label: 'Great',      glyph: '!',  cls: 'q-great' },
+  good:       { label: 'Good',       glyph: '',   cls: 'q-good' },
+  inaccuracy: { label: 'Inaccuracy', glyph: '?!', cls: 'q-inaccuracy' },
+  mistake:    { label: 'Mistake',    glyph: '?',  cls: 'q-mistake' },
+  blunder:    { label: 'Blunder',    glyph: '??', cls: 'q-blunder' },
+  forced:     { label: 'Forced',     glyph: '',   cls: 'q-forced' },
+};
+const MATE_HALF = 50000; // above this, the position is a decided isolation
+
+// Grade a played move by how much it gives up against the Court's best reply.
+// Mate/isolation scores need care: a raw point-loss against a forced win is
+// astronomically large, so a still-winning move must not read as a "blunder"
+// merely for passing up a faster kill.
+function gradeMove(analysis, move) {
+  if (!analysis || analysis.terminal) return null;
+  if (analysis.singleton) return QUALITY.forced;
+  const played = analysis.scored.find((s) => s.from === move.from && s.to === move.to);
+  if (!played) return null;
+  const best = analysis.best;
+  const pv = played.v;
+  const playedMate = pv >= MATE_HALF;   // you have a forced isolation
+  const bestMate = best >= MATE_HALF;   // one was available
+  const playedLost = pv <= -MATE_HALF;  // you are now forced-lost
+  const bestLost = best <= -MATE_HALF;  // ...but every line was already lost
+  // The single move that held or won, with everything else far behind.
+  const second = analysis.scored.reduce(
+    (mx, s) => ((s.from === move.from && s.to === move.to) ? mx : Math.max(mx, s.v)), -Infinity);
+  const onlyMove = analysis.scored.length > 1 && pv - second >= 250;
+
+  let key;
+  if (playedMate) {
+    key = 'perfect'; // delivered or kept a forced win
+  } else if (playedLost && !bestLost) {
+    key = 'blunder'; // walked into a forced isolation from a holdable spot
+  } else if (bestMate) {
+    // Missed a forced win — judged by how much of the advantage survives.
+    key = pv >= 700 ? 'good' : pv >= 250 ? 'inaccuracy' : pv > -250 ? 'mistake' : 'blunder';
+  } else {
+    const loss = Math.max(0, best - pv);
+    if (loss > 700) key = 'blunder';
+    else if (loss > 300) key = 'mistake';
+    else if (loss > 130) key = 'inaccuracy';
+    else if (loss > 45) key = 'good';
+    else if (loss > 8) key = 'great';
+    else key = 'perfect';
+  }
+  if ((key === 'perfect' || key === 'great') && onlyMove && pv > 0) key = 'brilliant';
+  return { ...QUALITY[key], playedV: pv };
+}
+
+function assessmentLive() {
+  return settings.mode === 'ai' && !isTutorial() && !viewing;
+}
+
+// After a position change, either grade the move you just made or, once the
+// Court has replied, refresh the running evaluation for the turn ahead.
+function runAssessment() {
+  if (!assessmentLive()) { paintEval(); return; }
+  const last = logEntries[logEntries.length - 1];
+  if (last && last.side === settings.humanSide) gradeLastMove();
+  else refreshEval();
+}
+
+function gradeLastMove() {
+  const last = logEntries[logEntries.length - 1];
+  const before = hist[hist.length - 2];
+  if (!last || !before || !lastMove) return;
+  const move = { from: lastMove.from, to: lastMove.to };
+  const tok = ++evalToken;
+  paintEval(true);
+  setTimeout(() => {
+    const analysis = analyse(before);
+    const verdict = gradeMove(analysis, move);
+    if (verdict) {
+      last.quality = { label: verdict.label, glyph: verdict.glyph, cls: verdict.cls };
+      if (Number.isFinite(verdict.playedV) && verdict.label !== 'Forced') evalScore = verdict.playedV;
+      paintLog();
+      save();
+    }
+    if (tok === evalToken) paintEval();
+  }, 20);
+}
+
+function refreshEval() {
+  if (result || cur().turn !== settings.humanSide) { paintEval(); return; }
+  const tok = ++evalToken;
+  paintEval(true);
+  setTimeout(() => {
+    const a = analyse(cur());
+    if (tok !== evalToken) return;
+    if (!a.terminal) evalScore = a.best;
+    paintEval();
+  }, 20);
+}
+
+// Squash an evaluation in points to a 0–100 share for the bar.
+function evalPct(score) {
+  return Math.max(3, Math.min(97, 50 + 50 * Math.tanh(score / 700)));
+}
+
+function evalVerdictText(e) {
+  if (e >= MATE_HALF) return 'Isolation is at hand — you have it won.';
+  if (e <= -MATE_HALF) return 'The Court closes in — you are lost.';
+  if (e >= 700) return 'You are winning.';
+  if (e >= 250) return 'You hold the advantage.';
+  if (e > -250) return 'The board stands even.';
+  if (e > -700) return 'The Court holds the edge.';
+  return 'You are hard pressed.';
+}
+
+function paintEval(pending = false) {
+  const card = $('eval-card');
+  if (!card) return;
+  if (!assessmentLive()) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  card.classList.toggle('pending', pending);
+
+  const e = evalScore;
+  const pct = e == null ? 50 : evalPct(e);
+  $('eval-fill').style.width = pct + '%';
+  card.classList.toggle('winning', e != null && e >= 250);
+  card.classList.toggle('losing', e != null && e <= -250);
+  $('eval-verdict').textContent = e == null ? 'The Court weighs the board…' : evalVerdictText(e);
+  const num = $('eval-num');
+  if (e == null) num.textContent = '';
+  else if (Math.abs(e) >= MATE_HALF) num.textContent = e > 0 ? 'Isolation' : '−Isolation';
+  else num.textContent = (e >= 0 ? '+' : '−') + (Math.abs(e) / 100).toFixed(1);
+
+  // Echo the latest verdict on one of your moves, for prominence.
+  const mv = $('eval-move');
+  let lastYours = null;
+  for (let i = logEntries.length - 1; i >= 0; i--) {
+    if (logEntries[i].side === settings.humanSide) { lastYours = logEntries[i]; break; }
+  }
+  if (lastYours && lastYours.quality && lastYours.quality.glyph) {
+    mv.classList.remove('hidden');
+    mv.innerHTML = '';
+    const tag = document.createElement('span');
+    tag.className = 'qtag ' + lastYours.quality.cls;
+    tag.textContent = lastYours.quality.label;
+    mv.append(tag, document.createTextNode('your last move'));
+  } else {
+    mv.classList.add('hidden');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -580,6 +747,7 @@ function afterPositionChange() {
   paint();
   paintLog();
   save();
+  runAssessment();
 
   if (!result && isAiTurn()) scheduleAiMove();
 }
@@ -885,6 +1053,8 @@ function newGame(fresh) {
     selection = null;
     aiThinking = false;
     noticeText = null;
+    evalScore = null;
+    evalToken++;
     // The Court picks an opening to essay — novices sometimes just wing it.
     aiOpening = settings.mode === 'ai' && !(settings.level === 'novice' && Math.random() < 0.4)
       ? OPENINGS[Math.floor(Math.random() * OPENINGS.length)]
@@ -895,6 +1065,7 @@ function newGame(fresh) {
   paint();
   paintLog();
   save();
+  runAssessment();
   if (!result && isAiTurn()) scheduleAiMove();
 }
 
