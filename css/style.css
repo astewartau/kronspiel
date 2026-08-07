@@ -1321,6 +1321,100 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 .movelog .m.ash-piece { color: var(--ink-dim); }
 .movelog li:last-child .m:last-of-type { color: var(--gold-bright); }
 
+/* ---------- the Court's assessment (eval bar + move verdicts) ---------- */
+
+.eval-card {
+  background: linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  padding: 10px 14px 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+.eval-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+.eval-verdict {
+  font-family: "Cinzel", serif;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.eval-num {
+  font-family: "Cinzel", serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+.eval-track {
+  position: relative;
+  height: 9px;
+  border-radius: 5px;
+  background: #100d09;
+  border: 1px solid #322a1e;
+  overflow: hidden;
+}
+.eval-fill {
+  height: 100%;
+  width: 50%;
+  border-radius: 5px 0 0 5px;
+  background: linear-gradient(90deg, var(--gold-deep), var(--gold-bright));
+  transition: width 0.5s ease, background 0.5s ease;
+}
+.eval-card.losing .eval-fill { background: linear-gradient(90deg, #5a2318, var(--ember-soft)); }
+.eval-card.winning .eval-fill { background: linear-gradient(90deg, #3c5c31, var(--open-green)); }
+.eval-mid {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: 50%;
+  width: 1px;
+  background: rgba(232, 201, 106, 0.35);
+}
+.eval-card.pending .eval-fill { opacity: 0.5; }
+.eval-move {
+  margin-top: 8px;
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 13px;
+  color: var(--ink-dim);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.eval-move .qtag {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  color: #14100a;
+}
+
+/* A terse quality mark trailing your move in the Chronicle. */
+.qbadge {
+  margin-left: 5px;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.q-brilliant { background: #1aada6; color: #1aada6; }
+.q-perfect   { background: var(--gold-bright); color: var(--gold-bright); }
+.q-great     { background: #7aa64d; color: #7aa64d; }
+.q-inaccuracy { background: #d9963a; color: #d9963a; }
+.q-mistake   { background: #d97a34; color: #d97a34; }
+.q-blunder   { background: #c33b2f; color: #c33b2f; }
+/* The eval-card tag is a filled pill: keep its text dark for contrast. */
+.eval-move .qtag.q-brilliant,
+.eval-move .qtag.q-perfect,
+.eval-move .qtag.q-great,
+.eval-move .qtag.q-inaccuracy,
+.eval-move .qtag.q-mistake,
+.eval-move .qtag.q-blunder { color: #14100a; }
+
 /* ---------- colophon ---------- */
 
 .colophon {

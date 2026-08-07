@@ -6,7 +6,7 @@ import {
   initialState, genPseudo, genLegal, apply, make, attacked, turnStartResult,
   claimableDraws, isolationInfo, softIsolation, findKrone, notateBody, serialize, deserialize, positionKey,
 } from './engine.js';
-import { findBestMove, quickEval, OPENINGS } from './ai.js';
+import { findBestMove, quickEval, analyse, OPENINGS } from './ai.js';
 import { PIECE_SETS, pieceHTML, sigilInner } from './pieces.js';
 import { Net, makeCode, normalizeCode } from './net.js';
 import { LESSONS, buildTutState, sqOf } from './tutorial.js';
@@ -248,6 +248,7 @@ function paint() {
   paintBars();
   paintStatus();
   paintControls();
+  paintEval();
 }
 
 function paintBars() {
@@ -376,6 +377,14 @@ function logSpan(entry, cls) {
   } else {
     span.innerHTML = pieceHTML(prefs.pieceSet, entry.piece) + ' ' + entry.body;
   }
+  // The Court's verdict on your move, trailing the notation.
+  if (entry.quality && entry.quality.glyph) {
+    const b = document.createElement('span');
+    b.className = 'qbadge ' + entry.quality.cls;
+    b.textContent = entry.quality.glyph;
+    b.title = entry.quality.label;
+    span.appendChild(b);
+  }
   return span;
 }
 
@@ -393,6 +402,164 @@ function paintLog() {
     ol.appendChild(li);
   }
   ol.scrollTop = ol.scrollHeight;
+}
+
+// ---------------------------------------------------------------------------
+// The Court's assessment — a running evaluation from your side's point of view,
+// and a verdict on each of your moves against the Court's own best reply. Only
+// meaningful when there is a Court to hold an opinion (mode 'ai').
+// ---------------------------------------------------------------------------
+let evalScore = null;   // points from the human's view; + is good for you. null = unknown.
+let evalToken = 0;      // monotonic guard so a stale async result can't clobber a fresh eval.
+
+// Best→worst. A glyph of '' means the move is unremarkable and gets no badge.
+const QUALITY = {
+  brilliant:  { label: 'Brilliant',  glyph: '!!', cls: 'q-brilliant' },
+  perfect:    { label: 'Perfect',    glyph: '✦',  cls: 'q-perfect' },
+  great:      { label: 'Great',      glyph: '!',  cls: 'q-great' },
+  good:       { label: 'Good',       glyph: '',   cls: 'q-good' },
+  inaccuracy: { label: 'Inaccuracy', glyph: '?!', cls: 'q-inaccuracy' },
+  mistake:    { label: 'Mistake',    glyph: '?',  cls: 'q-mistake' },
+  blunder:    { label: 'Blunder',    glyph: '??', cls: 'q-blunder' },
+  forced:     { label: 'Forced',     glyph: '',   cls: 'q-forced' },
+};
+const MATE_HALF = 50000; // above this, the position is a decided isolation
+
+// Grade a played move by how much it gives up against the Court's best reply.
+// Mate/isolation scores need care: a raw point-loss against a forced win is
+// astronomically large, so a still-winning move must not read as a "blunder"
+// merely for passing up a faster kill.
+function gradeMove(analysis, move) {
+  if (!analysis || analysis.terminal) return null;
+  if (analysis.singleton) return QUALITY.forced;
+  const played = analysis.scored.find((s) => s.from === move.from && s.to === move.to);
+  if (!played) return null;
+  const best = analysis.best;
+  const pv = played.v;
+  const playedMate = pv >= MATE_HALF;   // you have a forced isolation
+  const bestMate = best >= MATE_HALF;   // one was available
+  const playedLost = pv <= -MATE_HALF;  // you are now forced-lost
+  const bestLost = best <= -MATE_HALF;  // ...but every line was already lost
+  // The single move that held or won, with everything else far behind.
+  const second = analysis.scored.reduce(
+    (mx, s) => ((s.from === move.from && s.to === move.to) ? mx : Math.max(mx, s.v)), -Infinity);
+  const onlyMove = analysis.scored.length > 1 && pv - second >= 250;
+
+  let key;
+  if (playedMate) {
+    key = 'perfect'; // delivered or kept a forced win
+  } else if (playedLost && !bestLost) {
+    key = 'blunder'; // walked into a forced isolation from a holdable spot
+  } else if (bestMate) {
+    // Missed a forced win — judged by how much of the advantage survives.
+    key = pv >= 700 ? 'good' : pv >= 250 ? 'inaccuracy' : pv > -250 ? 'mistake' : 'blunder';
+  } else {
+    const loss = Math.max(0, best - pv);
+    if (loss > 700) key = 'blunder';
+    else if (loss > 300) key = 'mistake';
+    else if (loss > 130) key = 'inaccuracy';
+    else if (loss > 45) key = 'good';
+    else if (loss > 8) key = 'great';
+    else key = 'perfect';
+  }
+  if ((key === 'perfect' || key === 'great') && onlyMove && pv > 0) key = 'brilliant';
+  return { ...QUALITY[key], playedV: pv };
+}
+
+function assessmentLive() {
+  return settings.mode === 'ai' && !isTutorial() && !viewing;
+}
+
+// After a position change, either grade the move you just made or, once the
+// Court has replied, refresh the running evaluation for the turn ahead.
+function runAssessment() {
+  if (!assessmentLive()) { paintEval(); return; }
+  const last = logEntries[logEntries.length - 1];
+  if (last && last.side === settings.humanSide) gradeLastMove();
+  else refreshEval();
+}
+
+function gradeLastMove() {
+  const last = logEntries[logEntries.length - 1];
+  const before = hist[hist.length - 2];
+  if (!last || !before || !lastMove) return;
+  const move = { from: lastMove.from, to: lastMove.to };
+  const tok = ++evalToken;
+  paintEval(true);
+  setTimeout(() => {
+    const analysis = analyse(before);
+    const verdict = gradeMove(analysis, move);
+    if (verdict) {
+      last.quality = { label: verdict.label, glyph: verdict.glyph, cls: verdict.cls };
+      if (Number.isFinite(verdict.playedV) && verdict.label !== 'Forced') evalScore = verdict.playedV;
+      paintLog();
+      save();
+    }
+    if (tok === evalToken) paintEval();
+  }, 20);
+}
+
+function refreshEval() {
+  if (result || cur().turn !== settings.humanSide) { paintEval(); return; }
+  const tok = ++evalToken;
+  paintEval(true);
+  setTimeout(() => {
+    const a = analyse(cur());
+    if (tok !== evalToken) return;
+    if (!a.terminal) evalScore = a.best;
+    paintEval();
+  }, 20);
+}
+
+// Squash an evaluation in points to a 0–100 share for the bar.
+function evalPct(score) {
+  return Math.max(3, Math.min(97, 50 + 50 * Math.tanh(score / 700)));
+}
+
+function evalVerdictText(e) {
+  if (e >= MATE_HALF) return 'Isolation is at hand — you have it won.';
+  if (e <= -MATE_HALF) return 'The Court closes in — you are lost.';
+  if (e >= 700) return 'You are winning.';
+  if (e >= 250) return 'You hold the advantage.';
+  if (e > -250) return 'The board stands even.';
+  if (e > -700) return 'The Court holds the edge.';
+  return 'You are hard pressed.';
+}
+
+function paintEval(pending = false) {
+  const card = $('eval-card');
+  if (!card) return;
+  if (!assessmentLive()) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  card.classList.toggle('pending', pending);
+
+  const e = evalScore;
+  const pct = e == null ? 50 : evalPct(e);
+  $('eval-fill').style.width = pct + '%';
+  card.classList.toggle('winning', e != null && e >= 250);
+  card.classList.toggle('losing', e != null && e <= -250);
+  $('eval-verdict').textContent = e == null ? 'The Court weighs the board…' : evalVerdictText(e);
+  const num = $('eval-num');
+  if (e == null) num.textContent = '';
+  else if (Math.abs(e) >= MATE_HALF) num.textContent = e > 0 ? 'Isolation' : '−Isolation';
+  else num.textContent = (e >= 0 ? '+' : '−') + (Math.abs(e) / 100).toFixed(1);
+
+  // Echo the latest verdict on one of your moves, for prominence.
+  const mv = $('eval-move');
+  let lastYours = null;
+  for (let i = logEntries.length - 1; i >= 0; i--) {
+    if (logEntries[i].side === settings.humanSide) { lastYours = logEntries[i]; break; }
+  }
+  if (lastYours && lastYours.quality && lastYours.quality.glyph) {
+    mv.classList.remove('hidden');
+    mv.innerHTML = '';
+    const tag = document.createElement('span');
+    tag.className = 'qtag ' + lastYours.quality.cls;
+    tag.textContent = lastYours.quality.label;
+    mv.append(tag, document.createTextNode('your last move'));
+  } else {
+    mv.classList.add('hidden');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -580,6 +747,7 @@ function afterPositionChange() {
   paint();
   paintLog();
   save();
+  runAssessment();
 
   if (!result && isAiTurn()) scheduleAiMove();
 }
@@ -885,6 +1053,8 @@ function newGame(fresh) {
     selection = null;
     aiThinking = false;
     noticeText = null;
+    evalScore = null;
+    evalToken++;
     // The Court picks an opening to essay — novices sometimes just wing it.
     aiOpening = settings.mode === 'ai' && !(settings.level === 'novice' && Math.random() < 0.4)
       ? OPENINGS[Math.floor(Math.random() * OPENINGS.length)]
@@ -895,6 +1065,7 @@ function newGame(fresh) {
   paint();
   paintLog();
   save();
+  runAssessment();
   if (!result && isAiTurn()) scheduleAiMove();
 }
 
@@ -1086,40 +1257,118 @@ function audio() {
     return actx;
   } catch { return null; }
 }
-function tone({ freq = 220, dur = 0.12, type = 'sine', gain = 0.18, attack = 0.006, freqEnd = null, delay = 0 }) {
-  const ac = audio(); if (!ac) return;
-  const t0 = ac.currentTime + delay;
-  const o = ac.createOscillator(), g = ac.createGain();
-  o.type = type;
-  o.frequency.setValueAtTime(freq, t0);
-  if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t0 + dur);
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(gain, t0 + attack);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  o.connect(g).connect(ac.destination);
-  o.start(t0); o.stop(t0 + dur + 0.03);
+// A shared limiter bus, so overlapping voices never clip.
+function bus() {
+  const ac = audio(); if (!ac) return null;
+  if (!ac._bus) {
+    const comp = ac.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.knee.value = 24; comp.ratio.value = 3.5;
+    comp.attack.value = 0.003; comp.release.value = 0.18;
+    const g = ac.createGain(); g.gain.value = 0.9;
+    comp.connect(g).connect(ac.destination);
+    ac._bus = comp;
+  }
+  return ac._bus;
 }
-function noiseBurst({ dur = 0.07, gain = 0.14, delay = 0, lp = 2200 }) {
-  const ac = audio(); if (!ac) return;
+// Filtered noise into a given node — the strike/scrape ingredient.
+function noiseTo(dest, { dur = 0.06, gain = 0.2, delay = 0, type = 'lowpass', freq = 1200, q = 1, curve = 1 } = {}) {
+  const ac = audio(); if (!ac || !dest) return;
   const t0 = ac.currentTime + delay;
   const n = Math.max(1, Math.floor(ac.sampleRate * dur));
   const buf = ac.createBuffer(1, n, ac.sampleRate);
   const d = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, curve);
   const src = ac.createBufferSource(); src.buffer = buf;
-  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+  const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
   const g = ac.createGain(); g.gain.value = gain;
-  src.connect(f).connect(g).connect(ac.destination);
+  src.connect(f).connect(g).connect(dest);
   src.start(t0);
 }
+// A struck bell — inharmonic partials over a long decay, with a strike transient.
+function bell(freq, { dur = 1.4, gain = 0.16, delay = 0 } = {}) {
+  const ac = audio(), out = bus(); if (!ac || !out) return;
+  const t0 = ac.currentTime + delay;
+  const master = ac.createGain(); master.gain.value = gain; master.connect(out);
+  const partials = [[1, 1, 1], [2.01, 0.55, 0.85], [2.42, 0.42, 0.6], [3.0, 0.3, 0.5], [4.16, 0.22, 0.34], [5.43, 0.14, 0.24]];
+  for (const [ratio, amp, dscale] of partials) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = freq * ratio;
+    const d = Math.max(0.08, dur * dscale);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(amp, t0 + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+    o.connect(g).connect(master);
+    o.start(t0); o.stop(t0 + d + 0.05);
+  }
+  noiseTo(master, { dur: 0.012, gain: 0.5, delay, type: 'bandpass', freq: freq * 3, q: 1 });
+}
+// A plucked string — harmonic partials with a fast decay and a brightness that
+// fades as it rings (what makes a string read as a string). No feedback loop.
+function pluck(freq, { dur = 0.45, gain = 0.2, delay = 0 } = {}) {
+  const ac = audio(), out = bus(); if (!ac || !out) return;
+  const t0 = ac.currentTime + delay;
+  const master = ac.createGain(); master.gain.value = gain;
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.7;
+  lp.frequency.setValueAtTime(4200, t0);
+  lp.frequency.exponentialRampToValueAtTime(900, t0 + dur * 0.8);
+  master.connect(lp).connect(out);
+  const partials = [[1, 1], [2, 0.45], [3, 0.26], [4, 0.15], [5, 0.08]];
+  for (const [ratio, amp] of partials) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'triangle'; o.frequency.value = freq * ratio;
+    const d = Math.max(0.09, dur * (1 - (ratio - 1) * 0.13)); // upper partials fade first
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(amp, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+    o.connect(g).connect(master);
+    o.start(t0); o.stop(t0 + d + 0.05);
+  }
+}
+// A wooden knock — a resonant band of noise over a short pitched body.
+function knock({ freq = 780, dur = 0.055, gain = 0.3, delay = 0, q = 7 } = {}) {
+  const ac = audio(), out = bus(); if (!ac || !out) return;
+  const t0 = ac.currentTime + delay;
+  noiseTo(out, { dur, gain, delay, type: 'bandpass', freq, q, curve: 2 });
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(freq * 0.55, t0);
+  o.frequency.exponentialRampToValueAtTime(freq * 0.34, t0 + dur);
+  g.gain.setValueAtTime(gain * 0.6, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur * 1.8);
+  o.connect(g).connect(out);
+  o.start(t0); o.stop(t0 + dur * 1.9 + 0.02);
+}
+// A low bowed drone — the dread beneath a siege or an ending.
+function drone(freq, { dur = 1.3, gain = 0.1, delay = 0 } = {}) {
+  const ac = audio(), out = bus(); if (!ac || !out) return;
+  const t0 = ac.currentTime + delay;
+  const g = ac.createGain();
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700; lp.Q.value = 0.7;
+  const o1 = ac.createOscillator(), o2 = ac.createOscillator();
+  o1.type = 'sawtooth'; o1.frequency.value = freq;
+  o2.type = 'sawtooth'; o2.frequency.value = freq * 1.004;
+  const lfo = ac.createOscillator(), lg = ac.createGain();
+  lfo.frequency.value = 5.2; lg.gain.value = freq * 0.006;
+  lfo.connect(lg); lg.connect(o1.frequency); lg.connect(o2.frequency);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.14);
+  g.gain.setValueAtTime(gain, t0 + dur * 0.55);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o1.connect(lp); o2.connect(lp); lp.connect(g).connect(out);
+  const end = t0 + dur + 0.05;
+  o1.start(t0); o2.start(t0); lfo.start(t0);
+  o1.stop(end); o2.stop(end); lfo.stop(end);
+}
+// On-theme cues: wood for the hand, plucked strings for the leap, bells and
+// drones for the reckoning.
 const SFX = {
-  place() { noiseBurst({ dur: 0.05, gain: 0.11, lp: 2600 }); tone({ freq: 150, dur: 0.08, gain: 0.14 }); },
-  capture() { noiseBurst({ dur: 0.13, gain: 0.17, lp: 1400 }); tone({ freq: 92, dur: 0.17, type: 'triangle', gain: 0.2 }); },
-  flucht() { tone({ freq: 300, freqEnd: 840, dur: 0.3, gain: 0.15 }); tone({ freq: 150, freqEnd: 420, dur: 0.3, type: 'triangle', gain: 0.09 }); },
-  warn() { tone({ freq: 174.6, dur: 0.55, gain: 0.13 }); tone({ freq: 176.5, dur: 0.55, gain: 0.1 }); },
-  victory() { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone({ freq: f, dur: 0.9, gain: 0.15, delay: i * 0.1 })); tone({ freq: 261.6, dur: 1.2, type: 'triangle', gain: 0.07 }); },
-  defeat() { [392, 311.1, 233.1].forEach((f, i) => tone({ freq: f, dur: 0.7, type: 'triangle', gain: 0.14, delay: i * 0.13 })); },
-  draw() { tone({ freq: 349.2, dur: 0.8, gain: 0.11 }); tone({ freq: 392, dur: 0.8, gain: 0.09, delay: 0.12 }); },
+  place() { knock({ freq: 760, dur: 0.05, gain: 0.26, q: 6 }); },
+  capture() { knock({ freq: 300, dur: 0.08, gain: 0.32, q: 4 }); bell(120, { dur: 0.5, gain: 0.05 }); },
+  flucht() { pluck(392, { dur: 0.5, gain: 0.2 }); pluck(587.33, { dur: 0.6, gain: 0.17, delay: 0.085 }); },
+  warn() { bell(146.83, { dur: 1.7, gain: 0.13 }); drone(73.42, { dur: 1.5, gain: 0.05 }); },
+  victory() { [392, 493.88, 587.33, 784].forEach((f, i) => bell(f, { dur: 1.6, gain: 0.12, delay: i * 0.12 })); drone(196, { dur: 2.0, gain: 0.05 }); },
+  defeat() { [220, 174.61, 130.81].forEach((f, i) => bell(f, { dur: 1.7, gain: 0.13, delay: i * 0.34 })); drone(55, { dur: 2.0, gain: 0.06 }); },
+  draw() { bell(293.66, { dur: 1.3, gain: 0.12 }); bell(440, { dur: 1.3, gain: 0.09, delay: 0.11 }); },
 };
 function sfx(name) { try { SFX[name]?.(); } catch { /* audio unavailable */ } }
 function haptic(pattern) { if (prefs.sound) { try { navigator.vibrate?.(pattern); } catch { /* unsupported */ } } }
