@@ -19,7 +19,9 @@ const PREFS_KEY = 'kronspiel-prefs-v1';
 // Game session state
 // ---------------------------------------------------------------------------
 
-let settings = { mode: 'hotseat', humanSide: BONE, level: 'courtier' };
+let settings = { mode: 'hotseat', humanSide: BONE, level: 'courtier', assess: true, undo: true, hints: false };
+let hintMove = null; // {from,to} the Court's counselled move, highlighted until you move
+let reviewFocus = 'replay'; // which floating review controls to show: 'replay' | 'annotate'
 let prefs = { pieceSet: 'sigils', sound: true }; // boardLabels left unset → device default (hidden on mobile)
 let hist = [];          // engine states, hist[hist.length-1] is current
 let logEntries = [];    // [{ply, side, text}]
@@ -195,7 +197,12 @@ function paint() {
   for (const el of squares) {
     const sq = +el.dataset.sq;
     el.classList.remove('sel', 'move', 'capture', 'flucht-target', 'last-from', 'last-to',
-      'esc-open', 'esc-enemy', 'esc-own', 'doom-enemy', 'doom-own', 'doom-krone', 'krone-warn', 'krone-flee', 'tut-mark', 'cursor');
+      'esc-open', 'esc-enemy', 'esc-own', 'doom-enemy', 'doom-own', 'doom-krone', 'krone-warn', 'krone-flee', 'tut-mark', 'cursor',
+      'hint-from', 'hint-to');
+    if (hintMove) {
+      if (sq === hintMove.from) el.classList.add('hint-from');
+      if (sq === hintMove.to) el.classList.add('hint-to');
+    }
     if (tutMarks && tutMarks.has(sq)) el.classList.add('tut-mark');
     if (cursorSq === sq && boardInteractive()) el.classList.add('cursor');
     if (lastMove) {
@@ -288,6 +295,8 @@ function paintStatus() {
   st.classList.toggle('thinking', aiThinking);
   fs.classList.toggle('thinking', aiThinking);
   paintWinterClock();
+  // A finished game turns the status line into the way back to the verdict.
+  document.body.classList.toggle('has-result', !!result && !isTutorial());
   if (isTutorial()) {
     st.textContent = 'The Primer';
     fs.textContent = 'The Primer';
@@ -357,8 +366,18 @@ function paintControls() {
   $('btn-review').classList.toggle('hidden', !result || hist.length < 2 || isTutorial());
   $('btn-return-editor').classList.toggle('hidden', !puzzleReturn || isTutorial());
   $('btn-exit-game').classList.toggle('hidden', isTutorial());
+  // Takebacks can be switched off for a game against the Court; hide Undo then.
+  const noUndo = settings.undo === false;
+  $('btn-undo').classList.toggle('hidden', noUndo);
+  $('btn-focus-undo').classList.toggle('hidden', noUndo);
   $('btn-undo').disabled = hist.length < 2 || aiThinking || isOnline() || isTutorial();
   $('btn-focus-undo').disabled = $('btn-undo').disabled;
+
+  // Show Hint: only against the Court, when enabled and it's your move to make.
+  const canHint = settings.mode === 'ai' && settings.hints === true;
+  const hintReady = canHint && interactive && cur().turn === settings.humanSide && !hintMove;
+  $('btn-hint').classList.toggle('hidden', !canHint);
+  $('btn-hint').disabled = !hintReady;
   $('btn-parley').disabled = !interactive || (isOnline() && !oppHere);
   $('btn-resign').disabled = !interactive || (isOnline() && !oppHere);
   const claims = interactive ? claimableDraws(cur()) : { longSiege: false, longWinter: false };
@@ -467,7 +486,7 @@ function gradeMove(analysis, move) {
 }
 
 function assessmentLive() {
-  return settings.mode === 'ai' && !isTutorial() && !viewing;
+  return settings.mode === 'ai' && settings.assess !== false && !isTutorial() && !viewing;
 }
 
 // After a position change, either grade the move you just made or, once the
@@ -690,6 +709,7 @@ function illegalHint(from, to) {
 function playMove(m, fromRemote = false) {
   const before = cur();
   noticeText = null;
+  hintMove = null; // the counsel was for the position you just left
   clearAnno(); // a fresh position wipes any lingering marks
   if (isOnline() && !fromRemote) {
     net?.send({ t: 'move', m: { from: m.from, to: m.to }, ply: before.ply });
@@ -837,12 +857,10 @@ function showGameOver() {
   $('btn-show-result').classList.add('hidden');
 }
 
-// The floating chip names the result outright — it reads as a banner, and
-// tapping it reopens the full announcement.
+// No floating chip: the status line already names the verdict, and once a game
+// is over it becomes tappable to reopen the full announcement (see paintStatus).
 function showResultChip() {
-  if (!result) return;
-  $('btn-show-result').textContent = `Result — ${result.title}`;
-  $('btn-show-result').classList.remove('hidden');
+  if (result) paintStatus();
 }
 
 // ---------------------------------------------------------------------------
@@ -1060,6 +1078,7 @@ function newGame(fresh) {
       ? OPENINGS[Math.floor(Math.random() * OPENINGS.length)]
       : null;
   }
+  hintMove = null;
   syncPieces();
   legalCache = result ? [] : genLegal(cur());
   paint();
@@ -1067,6 +1086,28 @@ function newGame(fresh) {
   save();
   runAssessment();
   if (!result && isAiTurn()) scheduleAiMove();
+}
+
+// Show Hint: mark the move the strongest engine favours for the side to move.
+// Uses a deep, difficulty-independent search — always the best counsel available.
+function showHint() {
+  if (settings.mode !== 'ai' || !settings.hints) return;
+  if (result || aiThinking || cur().turn !== settings.humanSide) return;
+  noticeText = 'The Court weighs your options…';
+  paintStatus();
+  $('btn-hint').disabled = true;
+  setTimeout(() => {
+    if (result || aiThinking || cur().turn !== settings.humanSide) { paintControls(); return; }
+    const a = analyse(cur(), { maxDepth: 6, timeMs: 1600, jitter: 0, blunder: 0, planMargin: 0 });
+    if (!a.terminal && a.bestMove) {
+      hintMove = { from: a.bestMove.from, to: a.bestMove.to };
+      noticeText = 'The Court marks the move it favours.';
+    } else {
+      noticeText = null;
+    }
+    paint();
+    closeSheet(); // reveal the board so the marked move is visible on mobile
+  }, 20);
 }
 
 function undo() {
@@ -1884,7 +1925,9 @@ function setAnnotating(on) {
   renderAnno();
   if (on) openSheet('annotate');
   else if (openSheetName === 'annotate') closeSheet();
+  if (!on && viewing) reviewFocus = 'replay'; // leaving annotate hands focus back to the replay controls
   refreshTabBar();
+  updateFloatingControls();
 }
 
 function selectAnnoTool(tool, glyph) {
@@ -2647,6 +2690,9 @@ function resumePlayingFromReplay() {
         mode: 'ai',
         humanSide: rs.humanSide === ASH ? ASH : BONE,
         level: ['novice', 'courtier', 'spymaster'].includes(rs.level) ? rs.level : 'courtier',
+        assess: rs.assess !== false,
+        undo: rs.undo !== false,
+        hints: rs.hints === true,
       }
     : { mode: 'hotseat', humanSide: BONE, level: 'courtier' };
   hist = states;
@@ -2760,16 +2806,52 @@ function paintReplayChrome() {
   }
 }
 
+// The floating review cluster (mobile): shows one set of controls — replay
+// stepping or annotation — for whichever panel was most recently opened, but
+// only while its full panel (any sheet) is closed. Never both at once; an open
+// sheet hides them so it always sits on top.
+function updateFloatingControls() {
+  const rm = document.getElementById('replay-mini');
+  const am = document.getElementById('annotate-mini');
+  if (!rm || !am) return;
+  const sheetOpen = openSheetName !== null;
+  const canReplay = viewing && !!replay;
+  const canAnnotate = annotating;
+  let show = null;
+  if (!sheetOpen) {
+    if (reviewFocus === 'annotate' && canAnnotate) show = 'annotate';
+    else if (reviewFocus === 'replay' && canReplay) show = 'replay';
+    else if (canAnnotate) show = 'annotate';
+    else if (canReplay) show = 'replay';
+  }
+  rm.classList.toggle('hidden', show !== 'replay');
+  am.classList.toggle('hidden', show !== 'annotate');
+  if (show === 'replay') {
+    const total = replay.states.length - 1;
+    $('rm-count').textContent = `${replay.step} / ${total}`;
+    $('rm-prev').disabled = replay.step <= 0;
+    $('rm-next').disabled = replay.step >= total;
+    $('rm-play').textContent = replayTimer ? '❚❚' : '▶';
+    $('rm-anno').classList.toggle('hidden', !canAnnotate); // offer the switch only if annotating
+  } else if (show === 'annotate') {
+    $('am-arrow').classList.toggle('active', annoTool === 'arrow');
+    $('am-highlight').classList.toggle('active', annoTool === 'highlight');
+    $('am-replay').classList.toggle('hidden', !canReplay); // offer the switch only if a replay is open
+  }
+}
+
 function replayRender() {
   rebuildReplayPieces();
   paintReplayChrome();
   renderAnno();
+  updateFloatingControls();
 }
 
 function stopAutoplay() {
   if (replayTimer) { clearInterval(replayTimer); replayTimer = null; }
   $('btn-rp-play').classList.remove('playing');
   $('btn-rp-play').textContent = '▶';
+  updateFloatingControls();
 }
 function toggleAutoplay() {
   if (replayTimer) { stopAutoplay(); return; }
@@ -2780,6 +2862,7 @@ function toggleAutoplay() {
     if (replay.step >= replay.states.length - 1) { stopAutoplay(); return; }
     replayGoto(replay.step + 1);
   }, 950);
+  updateFloatingControls();
 }
 
 function prunedCommentary(commentary) {
@@ -2941,6 +3024,20 @@ function initAnnals() {
   $('btn-rp-next').addEventListener('click', () => { stopAutoplay(); replayGoto(replay.step + 1); });
   $('btn-rp-last').addEventListener('click', () => { stopAutoplay(); replayGoto(replay.states.length - 1); });
   $('btn-rp-play').addEventListener('click', toggleAutoplay);
+
+  // The floating mini controls mirror the panels' actions, minus the chrome.
+  $('rm-prev').addEventListener('click', () => { stopAutoplay(); replayGoto(replay.step - 1); });
+  $('rm-next').addEventListener('click', () => { stopAutoplay(); replayGoto(replay.step + 1); });
+  $('rm-play').addEventListener('click', toggleAutoplay);
+  $('rm-panel').addEventListener('click', () => openSheet('replay'));
+  $('rm-anno').addEventListener('click', () => { reviewFocus = 'annotate'; updateFloatingControls(); });
+  $('am-arrow').addEventListener('click', () => { selectAnnoTool('arrow'); updateFloatingControls(); });
+  $('am-highlight').addEventListener('click', () => { selectAnnoTool('highlight'); updateFloatingControls(); });
+  $('am-undo').addEventListener('click', annoUndo);
+  $('am-panel').addEventListener('click', () => openSheet('annotate'));
+  $('am-replay').addEventListener('click', () => { reviewFocus = 'replay'; updateFloatingControls(); });
+  $('am-done').addEventListener('click', () => setAnnotating(false));
+
   $('btn-rp-annotate').addEventListener('click', () => setAnnotating(!annotating));
   $('btn-rp-resume').addEventListener('click', resumePlayingFromReplay);
   $('btn-rp-save').addEventListener('click', saveReplay);
@@ -2990,13 +3087,17 @@ function openSheet(name) {
   if (openSheetName && openSheetName !== name) $(SHEET_IDS[openSheetName])?.classList.remove('m-open');
   $(SHEET_IDS[name])?.classList.add('m-open');
   openSheetName = name;
+  // Opening a review panel makes it the one whose floating controls show.
+  if (name === 'replay' || name === 'annotate') reviewFocus = name;
   refreshTabBar();
+  updateFloatingControls();
 }
 function closeSheet(name) {
   if (name && openSheetName !== name) return; // only close the named one
   if (openSheetName) $(SHEET_IDS[openSheetName])?.classList.remove('m-open');
   openSheetName = null;
   refreshTabBar();
+  updateFloatingControls();
 }
 function toggleSheet(name) { openSheetName === name ? closeSheet() : openSheet(name); }
 
@@ -3019,7 +3120,40 @@ function initMobileShell() {
     if (b) { $('ov-menu').classList.add('hidden'); $(b.dataset.menu).click(); }
   });
 
+  initSheetSwipe();
   refreshTabBar();
+}
+
+// Swipe an open bottom sheet downward to dismiss it. The drag only begins when
+// the sheet is scrolled to the top, so a downward swipe over scrollable content
+// scrolls first and only dismisses once you're at the top and keep pulling.
+function initSheetSwipe() {
+  for (const id of Object.values(SHEET_IDS)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    let startY = 0, delta = 0, dragging = false;
+    el.addEventListener('touchstart', (e) => {
+      if (!el.classList.contains('m-open') || el.scrollTop > 0) { dragging = false; return; }
+      startY = e.touches[0].clientY; delta = 0; dragging = true;
+      el.style.transition = 'none';
+    }, { passive: true });
+    el.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      delta = e.touches[0].clientY - startY;
+      if (delta <= 0 || el.scrollTop > 0) { el.style.transform = ''; if (el.scrollTop > 0) dragging = false; return; }
+      e.preventDefault(); // claim the gesture so the page behind doesn't scroll
+      el.style.transform = `translateY(${delta}px)`;
+    }, { passive: false });
+    const release = () => {
+      if (!dragging) return;
+      dragging = false;
+      el.style.transition = '';
+      el.style.transform = '';
+      if (delta > 90) closeSheet();
+    };
+    el.addEventListener('touchend', release);
+    el.addEventListener('touchcancel', release);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3440,6 +3574,9 @@ function wireUi() {
         mode,
         humanSide: segValue('seg-side') === 'bone' ? BONE : ASH,
         level: segValue('seg-level'),
+        assess: segValue('seg-assess') === 'on',
+        undo: segValue('seg-undo') === 'on',
+        hints: segValue('seg-hint') === 'on',
       };
       flipped = settings.mode === 'ai' && settings.humanSide === ASH;
       newGame(true);
@@ -3459,6 +3596,9 @@ function wireUi() {
   wireSeg('seg-where', syncOnlineFields);
   wireSeg('seg-side');
   wireSeg('seg-level');
+  wireSeg('seg-assess');
+  wireSeg('seg-undo');
+  wireSeg('seg-hint');
   wireSeg('seg-net-role', (v) => {
     newDlg.classList.toggle('role-join', v === 'join');
   });
@@ -3566,12 +3706,17 @@ function wireUi() {
     $('ov-over').classList.add('hidden');
     showResultChip();
   });
-  $('btn-show-result').addEventListener('click', showGameOver);
+  // The status line (and the focus-mode status) reopen the verdict once a game
+  // is over — no floating button needed.
+  const reopenResult = () => { if (result && $('ov-over').classList.contains('hidden')) showGameOver(); };
+  $('status-card').addEventListener('click', reopenResult);
+  $('focus-status').addEventListener('click', reopenResult);
   $('btn-review').addEventListener('click', openPostGameReview);
   $('btn-return-editor').addEventListener('click', returnToEditor);
   $('btn-exit-game').addEventListener('click', () => guardSession(enterIdle));
 
   $('btn-undo').addEventListener('click', undo);
+  $('btn-hint').addEventListener('click', showHint);
   $('btn-flip').addEventListener('click', () => { flipped = !flipped; selection = null; layoutBoard(); save(); });
   $('btn-parley').addEventListener('click', offerParley);
   $('btn-resign').addEventListener('click', resign);

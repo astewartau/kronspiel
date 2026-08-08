@@ -146,7 +146,7 @@
         </div>
       </div>
 
-      <div class="status-card">
+      <div class="status-card" id="status-card">
         <div id="status" class="status" role="status" aria-live="polite">The Bone Court to move.</div>
         <div id="substatus" class="substatus" aria-live="polite"></div>
         <div id="winter-clock" class="winter-clock hidden"></div>
@@ -167,6 +167,7 @@
       </div>
 
       <div id="sheet-controls" class="m-sheet">
+        <button id="btn-hint" class="btn hint-btn hidden">Show Hint</button>
         <div class="controls">
           <button id="btn-undo" class="btn">Undo</button>
           <button id="btn-flip" class="btn">Flip Board</button>
@@ -342,6 +343,27 @@
         <button data-v="novice" class="seg-btn">Novice</button>
         <button data-v="courtier" class="seg-btn active">Courtier</button>
         <button data-v="spymaster" class="seg-btn">Spymaster</button>
+      </div>
+    </div>
+    <div class="field ai-only">
+      <span class="field-label">Move assessment</span>
+      <div class="seg" id="seg-assess">
+        <button data-v="on" class="seg-btn active">On</button>
+        <button data-v="off" class="seg-btn">Off</button>
+      </div>
+    </div>
+    <div class="field ai-only">
+      <span class="field-label">Takebacks</span>
+      <div class="seg" id="seg-undo">
+        <button data-v="on" class="seg-btn active">On</button>
+        <button data-v="off" class="seg-btn">Off</button>
+      </div>
+    </div>
+    <div class="field ai-only">
+      <span class="field-label">Show Hint</span>
+      <div class="seg" id="seg-hint">
+        <button data-v="on" class="seg-btn">On</button>
+        <button data-v="off" class="seg-btn active">Off</button>
       </div>
     </div>
     <div class="field online-only">
@@ -544,6 +566,23 @@
   </div>
 </div>
 <button class="btn result-chip hidden" id="btn-show-result">Show Result</button>
+<div id="replay-mini" class="review-mini hidden" aria-label="Replay controls">
+  <button id="rm-prev" class="rm-btn" aria-label="Previous move" title="Previous move">◀</button>
+  <button id="rm-play" class="rm-btn rm-play" aria-label="Play through moves" title="Play">▶</button>
+  <button id="rm-next" class="rm-btn" aria-label="Next move" title="Next move">▶▶</button>
+  <span id="rm-count" class="rm-count">0 / 0</span>
+  <button id="rm-panel" class="rm-btn" aria-label="Open the replay panel" title="Replay panel">☰</button>
+  <button id="rm-anno" class="rm-btn hidden" aria-label="Switch to annotation controls" title="Annotate">✎</button>
+</div>
+<div id="annotate-mini" class="review-mini hidden" aria-label="Annotation controls">
+  <span class="am-label" aria-hidden="true">✎</span>
+  <button id="am-arrow" class="rm-btn am-tool" data-tool="arrow" aria-label="Arrow tool" title="Arrow">↗</button>
+  <button id="am-highlight" class="rm-btn am-tool" data-tool="highlight" aria-label="Highlight tool" title="Highlight">▢</button>
+  <button id="am-undo" class="rm-btn" aria-label="Undo last mark" title="Undo">⤺</button>
+  <button id="am-panel" class="rm-btn" aria-label="Open the annotation panel" title="More tools">☰</button>
+  <button id="am-replay" class="rm-btn hidden" aria-label="Switch to replay controls" title="Replay">⏵</button>
+  <button id="am-done" class="rm-btn am-done" aria-label="Finish annotating" title="Done">✓</button>
+</div>
 <button class="focus-btn" id="btn-focus" title="Full-screen view" aria-label="Toggle full-screen view">⛶</button>
 <button class="focus-btn unavailable" id="btn-focus-chat" title="The Parlour" aria-label="Toggle chat">✉<span id="chat-unread" class="chat-unread hidden"></span></button>
 
