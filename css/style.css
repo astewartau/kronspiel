@@ -507,6 +507,18 @@ h1 {
 }
 .sq.last-from, .sq.last-to { box-shadow: inset 0 0 0 100vmax rgba(200, 162, 74, 0.17); }
 
+/* A hint from the Court: a cool blue ring, distinct from the gold of your own
+   moves, on the two squares of the move it favours — the target pulses. */
+.sq.hint-from { box-shadow: inset 0 0 0 3px #5b8fc9, inset 0 0 18px rgba(91, 143, 201, 0.35); }
+.sq.hint-to {
+  box-shadow: inset 0 0 0 3px #5b8fc9, inset 0 0 24px rgba(91, 143, 201, 0.5);
+  animation: hint-pulse 1.2s ease-in-out infinite;
+}
+@keyframes hint-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px #5b8fc9, inset 0 0 12px rgba(91, 143, 201, 0.32); }
+  50%      { box-shadow: inset 0 0 0 3px #86bdf0, inset 0 0 26px rgba(91, 143, 201, 0.62); }
+}
+
 /* keyboard cursor — a bright inset frame. No z-index: lifting the square (with
    its opaque face) above the pieces layer would hide the glyph on that tile.
    The outline paints at the cell edge; the piece stays visible on top. */
@@ -1786,14 +1798,23 @@ svg.sigil { stroke-linejoin: round; stroke-width: 3; }
 #over-text { font-size: 16.5px; line-height: 1.5; color: var(--ink); font-style: italic; }
 .dialog.gameover .dialog-actions { justify-content: center; }
 
-.result-chip {
-  position: fixed;
-  bottom: 22px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 40;
-  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.6));
+/* The old floating result chip is retired: the status line itself carries the
+   verdict and, once a game is over, becomes the way back into the full result. */
+.result-chip { display: none; }
+
+body.has-result .status-card { cursor: pointer; }
+body.has-result .status-card:hover { border-color: var(--gold-deep); }
+body.has-result .status-card::after {
+  content: "▸ View the verdict";
+  display: block;
+  margin-top: 6px;
+  font-family: "Cinzel", serif;
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--gold);
 }
+body.has-result #focus-status { cursor: pointer; text-decoration: underline dotted rgba(200, 162, 74, 0.55); }
 
 /* ---------- the court menu — the empty table ---------- */
 
@@ -1923,6 +1944,34 @@ body.first-visit #cm-primer {
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
 }
 .focus-btn:hover { border-color: var(--gold); color: var(--gold-bright); }
+
+/* Floating review controls — a compact cluster shown over the board on mobile
+   so stepping a replay or annotating doesn't need the full panel. Only one set
+   (replay OR annotate) shows at a time. Desktop keeps the panels in the sidebar,
+   so these stay hidden there. */
+.review-mini { display: none; }
+.rm-btn {
+  appearance: none;
+  min-width: 40px; height: 40px; padding: 0 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(180deg, #2a231a 0%, #1b1712 100%);
+  border: 1px solid #4a3f2c; border-radius: 999px;
+  color: var(--gold-pale); font-size: 16px; line-height: 1; cursor: pointer;
+}
+.rm-btn:disabled { opacity: 0.35; }
+.rm-btn.rm-play { color: var(--gold-bright); }
+.rm-btn.active { border-color: var(--gold); color: var(--gold-bright); background: rgba(200, 162, 74, 0.14); }
+.rm-btn.am-done { color: var(--open-green); }
+.rm-count {
+  font-family: "Cinzel", serif; font-variant-numeric: tabular-nums;
+  font-size: 12px; color: var(--ink-dim); padding: 0 6px; white-space: nowrap;
+}
+.am-label {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif; font-weight: 800;
+  font-size: 15px; color: #86bdf0; padding: 0 4px 0 6px;
+}
+/* A finished-game replay under annotation: mark the board so the mode is plain. */
+body.annotating .board-frame { outline: 2px dashed rgba(134, 189, 240, 0.55); outline-offset: 3px; }
 
 .btn.mini {
   padding: 6px 12px;
@@ -2075,7 +2124,7 @@ body.no-board-labels .files { display: none; }
   }
 
   /* The board area fills all space between the top bar and the tab bar. */
-  .table { flex: 1 1 auto; min-height: 0; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 2px 0; }
+  .table { flex: 1 1 auto; min-height: 0; flex-direction: column; align-items: center; justify-content: flex-start; gap: 5px; padding: 4px 0 2px; }
   .board-column { gap: 5px; }
 
   /* Frame off on mobile — the board runs nearly edge to edge. */
@@ -2169,6 +2218,34 @@ body.no-board-labels .files { display: none; }
   }
   #tutor-card.m-sheet:not(.hidden) { transform: none; visibility: visible; }
   .movelog { max-height: 46dvh; }
+
+  /* Overlays scroll as a whole on phones: a tall dialog (the Rules) is centred
+     and can exceed the viewport, so let the overlay itself scroll and pin the
+     dialog to the top instead of trapping its ends off-screen. */
+  .overlay { align-items: flex-start; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px; }
+  .dialog { max-height: none; }
+
+  /* The move-assessment card, compacted: one tight line plus a thin bar. The
+     per-move verdict already shows in the Chronicle, so drop the echo here. */
+  .eval-card { padding: 6px 12px 7px; }
+  .eval-head { margin-bottom: 5px; }
+  .eval-verdict { font-size: 11.5px; }
+  .eval-num { font-size: 11px; }
+  .eval-track { height: 6px; }
+  .eval-move { display: none; }
+
+  /* The floating review cluster (replay or annotate), docked above the tab bar. */
+  .review-mini:not(.hidden) {
+    display: flex; align-items: center; gap: 4px;
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 45;
+    max-width: calc(100vw - 20px); flex-wrap: nowrap;
+    padding: 5px 6px; border-radius: 999px;
+    background: linear-gradient(180deg, #221c14 0%, #14100b 100%);
+    border: 1px solid var(--gold-deep);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.6);
+  }
+  #annotate-mini:not(.hidden) { border-color: #3f5c78; }
 
   /* The tab bar — the persistent bottom menu. */
   .mobile-tabs {
